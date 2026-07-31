@@ -50,7 +50,7 @@ class DeviceControlActivity : AppCompatActivity() {
     }
 
     private fun initMqtt() {
-        mqttClient = MqttClient(device.broker, "ctl-" + device.deviceId, MemoryPersistence())
+        mqttClient = MqttClient(normalizeBroker(device.broker), "ctl-" + device.deviceId, MemoryPersistence())
         val options = MqttConnectOptions().apply {
             userName = device.ctlUser
             password = device.ctlPass.toCharArray()
@@ -185,6 +185,20 @@ class DeviceControlActivity : AppCompatActivity() {
             .setPositiveButton("解绑") { _, _ -> doUnbind() }
             .setNegativeButton("取消", null)
             .show()
+    }
+
+    /**
+     * 归一化 Broker 地址：二维码中用户可能直接粘贴 EMQX 地址（如 xxxx.emqxsl.com:8883），
+     * 而 Paho 要求带协议前缀。缺前缀时按端口判断：8883/8884/8886 走 ssl://，其余走 tcp://。
+     */
+    private fun normalizeBroker(raw: String): String {
+        val trimmed = raw.trim()
+        if (trimmed.startsWith("ssl://") || trimmed.startsWith("tcp://") || trimmed.startsWith("ws://") || trimmed.startsWith("wss://")) {
+            return trimmed
+        }
+        val port = trimmed.substringAfterLast(':', trimmed).toIntOrNull()
+        val scheme = if (port != null && (port == 8883 || port == 8884 || port == 8886)) "ssl://" else "tcp://"
+        return "$scheme$trimmed"
     }
 
     private fun doUnbind() {

@@ -10,3 +10,8 @@
 -keep class com.yample.daily.controller.BindingPayload { *; }
 # 配对握手派生会话密钥
 -keep class com.yample.daily.controller.Hkdf { *; }
+
+# Paho MQTT client：内部通过反射（Class.forName）加载 SimpleLogger 等日志类，
+# 混淆后会抛 MissingResourceException「Error locating the logging class」导致崩溃
+-keep class org.eclipse.paho.client.mqttv3.** { *; }
+-dontwarn org.eclipse.paho.client.mqttv3.**
