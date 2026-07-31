@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 手机外框（控制端本体）：圆角矩形以 path 绘制 -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="3"
+        android:pathData="M42,39 H58 A5,5 0 0,1 63,44 V72 A5,5 0 0,1 58,77 H42 A5,5 0 0,1 37,72 V44 A5,5 0 0,1 42,39 Z" />
+    <!-- 听筒 -->
+    <rect
+        android:x="47dp"
+        android:y="42.5dp"
+        android:width="6dp"
+        android:height="1.6dp"
+        android:fillColor="#FFFFFFFF" />
+    <!-- Home 指示条 -->
+    <rect
+        android:x="45dp"
+        android:y="72dp"
+        android:width="10dp"
+        android:height="2.4dp"
+        android:fillColor="#FFFFFFFF" />
+    <!-- 网络信号弧（远程连接） -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:pathData="M64.68,34.72 A6.5,6.5 0 0,1 69.28,39.32" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:pathData="M65.98,29.89 A11.5,11.5 0 0,1 74.11,38.02" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:pathData="M67.27,25.07 A16.5,16.5 0 0,1 78.93,36.73" />
+    <!-- 信号源点 -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M61,41 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0 z" />
+</vector>

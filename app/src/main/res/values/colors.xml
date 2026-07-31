@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="md_primary">#5B5BD6</color>
+    <color name="md_onPrimary">#FFFFFF</color>
+    <color name="md_primaryContainer">#E0E0FF</color>
+    <color name="md_onPrimaryContainer">#0E0F4A</color>
+    <color name="md_secondary">#5D5D8A</color>
+    <color name="md_onSecondary">#FFFFFF</color>
+    <color name="md_secondaryContainer">#E2E1FA</color>
+    <color name="md_onSecondaryContainer">#1A1A34</color>
+    <color name="md_tertiary">#2E7D5B</color>
+    <color name="md_onTertiary">#FFFFFF</color>
+    <color name="md_tertiaryContainer">#B7F1D8</color>
+    <color name="md_onTertiaryContainer">#002116</color>
+    <color name="md_error">#BA1A1A</color>
+    <color name="md_onError">#FFFFFF</color>
+    <color name="md_surface">#FBF8FF</color>
+    <color name="md_onSurface">#1B1B23</color>
+    <color name="md_surfaceVariant">#E4E1EC</color>
+    <color name="md_onSurfaceVariant">#46464F</color>
+    <color name="md_outline">#767680</color>
+    <color name="md_outlineVariant">#C7C5D0</color>
+    <color name="md_background">#F6F4FB</color>
+    <color name="md_onBackground">#1B1B23</color>
+
+    <color name="header_start">#5B5BD6</color>
+    <color name="header_end">#7C4DFF</color>
+    <color name="on_header">#FFFFFF</color>
+
+    <color name="online">#2E9E63</color>
+    <color name="offline">#9A9AA5</color>
+</resources>

@@ -1,0 +1,65 @@
+// DailyController/app/build.gradle
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+    id 'kotlin-kapt'
+}
+
+android {
+    namespace 'com.yample.daily.controller'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'com.yample.daily.controller'
+        minSdk 26
+        targetSdk 36
+        versionCode 1
+        versionName "1.0"
+    }
+
+    signingConfigs {
+        release {
+            storeFile file('DailyTask.jks')
+            storePassword '123456789'
+            keyAlias 'key0'
+            keyPassword '123456789'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.release
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+    buildFeatures {
+        viewBinding true
+    }
+}
+
+dependencies {
+    implementation 'androidx.core:core-ktx:1.15.0'
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'com.google.android.material:material:1.12.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.2.0'
+    implementation 'androidx.recyclerview:recyclerview:1.4.0'
+    
+    // MQTT
+    implementation 'org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.2.5'
+    // QR
+    implementation 'com.journeyapps:zxing-android-embedded:4.3.0'
+    // Room
+    implementation 'androidx.room:room-runtime:2.8.2'
+    kapt 'androidx.room:room-compiler:2.8.2'
+    implementation 'androidx.room:room-ktx:2.8.2'
+    // Gson
+    implementation 'com.google.code.gson:gson:2.11.0'
+}
