@@ -11,6 +11,8 @@ jobs:
   build:
     name: Build APK
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout code
@@ -49,3 +51,21 @@ jobs:
         with:
           name: dailyController_release
           path: app/build/outputs/apk/release/*.apk
+
+      - name: Publish GitHub Release
+        if: github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: dailyController-${{ github.run_number }}
+          name: DailyController Build #${{ github.run_number }}
+          body: |
+            Auto-built by GitHub Actions.
+
+            - Branch: ${{ github.ref_name }}
+            - Commit: ${{ github.sha }}
+            - Note: This release is for testing and experience.
+          files: |
+            app/build/outputs/apk/debug/*.apk
+            app/build/outputs/apk/release/*.apk
+          draft: false
+          prerelease: false
