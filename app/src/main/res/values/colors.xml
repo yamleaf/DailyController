@@ -13,6 +13,7 @@
     <color name="md_tertiaryContainer">#B7F1D8</color>
     <color name="md_onTertiaryContainer">#002116</color>
     <color name="md_error">#BA1A1A</color>
+    <color name="md_errorContainer">#FFDAD6</color>
     <color name="md_onError">#FFFFFF</color>
     <color name="md_surface">#FBF8FF</color>
     <color name="md_onSurface">#1B1B23</color>
@@ -20,6 +21,15 @@
     <color name="md_onSurfaceVariant">#46464F</color>
     <color name="md_outline">#767680</color>
     <color name="md_outlineVariant">#C7C5D0</color>
+    <color name="md_skip">#616161</color>
+    <color name="md_skipContainer">#ECEFF1</color>
+    <color name="md_warning">#FA8C16</color>
+    <color name="md_warningContainer">#FFF1E6</color>
+    <color name="md_onWarningContainer">#5C2E00</color>
+    <color name="md_teal">#0E9B98</color>
+    <color name="md_tealContainer">#E6F7F7</color>
+    <color name="md_missed">#9AA0A6</color>
+    <color name="md_missedContainer">#F1F3F4</color>
     <color name="md_background">#F6F4FB</color>
     <color name="md_onBackground">#1B1B23</color>
 

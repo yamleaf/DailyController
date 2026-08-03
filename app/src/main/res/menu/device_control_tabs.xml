@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/nav_overview"
+        android:icon="@drawable/ic_overview"
+        android:title="总览" />
+    <item
+        android:id="@+id/nav_tasks"
+        android:icon="@drawable/ic_timer"
+        android:title="任务" />
+    <item
+        android:id="@+id/nav_calendar"
+        android:icon="@drawable/ic_calendar"
+        android:title="日历" />
+    <item
+        android:id="@+id/nav_settings"
+        android:icon="@drawable/ic_settings"
+        android:title="设置" />
+    <item
+        android:id="@+id/nav_permissions"
+        android:icon="@drawable/ic_shield"
+        android:title="权限" />
+</menu>

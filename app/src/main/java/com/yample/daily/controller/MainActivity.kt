@@ -62,6 +62,14 @@ class MainActivity : AppCompatActivity() {
         loadDevices()
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.getBooleanExtra("trigger_add_device", false)) {
+            showAddChooser()
+        }
+    }
+
     /** 现代化底部弹窗：扫码添加（直接调起扫码，不二次选择）/ 从剪贴板导入（两种方式供用户选） */
     private fun showAddChooser() {
         val sheet = com.google.android.material.bottomsheet.BottomSheetDialog(this)

@@ -1,6 +1,7 @@
 package com.yample.daily.controller
 
 import android.os.Bundle
+import android.content.Intent
 import android.util.Log
 import android.view.View
 import android.widget.EditText
@@ -24,6 +25,7 @@ import com.yample.mqttprotocol.MqttSigner
 import com.yample.mqttprotocol.PacketValue
 import com.yample.mqttprotocol.PacketValueAdapter
 import com.yample.mqttprotocol.Protocol
+import com.yample.mqttprotocol.SecretBox
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -70,6 +72,8 @@ class DeviceControlActivity : AppCompatActivity() {
 
     private val prefs by lazy { getSharedPreferences("remote_ctrl", MODE_PRIVATE) }
     private var remoteEnabled = true
+    /** 解绑原因：true=被控端强制解绑，false=控制端主动解绑/从未绑定 */
+    private var forceUnbound = false
     /** 增量推送主题 dt/{id}/push 是否订阅成功；失败则回退到 15s 轮询全量 */
     private var pushAvailable = true
     /** B3：Toast 去重状态 —— 相同 key 在窗口内只弹一次，避免失败/离线态循环轰炸 */
@@ -157,10 +161,12 @@ class DeviceControlActivity : AppCompatActivity() {
                 sendQuery()
             }
             onUnbindClick = { confirmUnbind() }
+            onDeleteClick = { confirmDelete() }
             onRemoteToggle = { on -> this@DeviceControlActivity.setRemoteEnabled(on) }
             onAction = { action -> sendAction(action) }
             onRePairClick = { retryPair() }
             onRetryClick = { retryConnection() }
+            onReconnectClick = { retryConnection() }
             setRemoteEnabled(remoteEnabled)
         }
         tasksFragment = TasksFragment().apply {
@@ -171,6 +177,15 @@ class DeviceControlActivity : AppCompatActivity() {
         settingsFragment = SettingsFragment().apply {
             onToggle = { item, on -> sendUpdate(item.key, PacketValue.BooleanValue(on)) }
             onIntChange = { item, v -> sendUpdate(item.key, PacketValue.IntValue(v)) }
+            // 需求 1 + 8：消息渠道批量配置含 Webhook Key / 邮箱授权码等机密，
+            // 用配对派生的会话密钥做 AES-GCM 信封加密后再下发，Broker 侧只能看到密文
+            onMsgConfigSave = { json ->
+                sendUpdate(
+                    Protocol.FIELD_MSG_CONFIG,
+                    PacketValue.StringValue(SecretBox.seal(device.sessionSecret, json))
+                )
+            }
+            onChannelChange = { v -> sendUpdate(Protocol.FIELD_MSG_CHANNEL, PacketValue.IntValue(v)) }
         }
         permissionsFragment = PermissionsFragment()
 
@@ -469,6 +484,18 @@ class DeviceControlActivity : AppCompatActivity() {
                     else -> "设备离线"
                 }
                 Log.d(TAG, "收到被控端状态消息 raw=$raw -> 显示「$text」(deviceId=${device.deviceId})")
+                // 被控端主动解绑（含强制解绑）：断开本机 MQTT、清配对态、禁用操作，提示重新配对
+                if (raw == "force_unbound" || raw == "unbound") {
+                    // 配对进行中（刚通过剪贴板/扫码导入，pairingToken 仍有效）：忽略此前残留的 retained 解绑消息。
+                    // 否则订阅 status 时会立刻收到旧的 force_unbound/unbound 并误触发解绑、断开 MQTT，
+                    // 导致无法完成重新配对（被控端接受配对后会重新发布 online 覆盖该残留状态）。
+                    if (device.pairingToken.isNotBlank()) {
+                        Log.d(TAG, "忽略残留解绑状态 raw=$raw：当前正处于配对中(pairingToken 有效)，等待被控端接受配对后回 online")
+                        return
+                    }
+                    runOnUiThread { handleRemoteUnbound(force = raw == "force_unbound") }
+                    return
+                }
                 runOnUiThread { setConnStatus(text, online) }
                 // 收到被控端 online 且当前没有待返回的快照时，主动请求一次快照
                 if (online && device.sessionSecret.isNotBlank() && queryPendingRid == null) {
@@ -482,6 +509,39 @@ class DeviceControlActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * 收到被控端解绑通知（force_unbound / unbound）后的处理：
+     * 1) 断开本机 MQTT 连接（不再收发任何消息）
+     * 2) 清除本地配对态（sessionSecret / bound），持久化到 DB
+     * 3) 禁用刷新、MQTT 开关、快捷动作等所有远程操作控件，仅保留缓存快照可见
+     * 4) 提示用户该设备已解绑，需使用被控端重新配对
+     * 重新配对成功后（[onPairAccepted]）恢复正常。
+     */
+    private fun handleRemoteUnbound(force: Boolean) {
+        Log.d(TAG, "收到被控端解绑通知 force=$force，断开 MQTT 并清除本地配对态")
+        forceUnbound = force
+        disconnectMqtt()
+        // 清除配对态：连接信息显示「未配对」，btnRePair 自动显示
+        device = device.copy(sessionSecret = "", pairingToken = "", bound = false)
+        lifecycleScope.launch(Dispatchers.IO) { db.deviceDao().update(device) }
+        // 禁用所有远程操作控件（刷新 / MQTT 开关 / 下拉刷新 / 快捷动作），仅留「重新配对」可点
+        overviewFragment.setControlsEnabled(false)
+        // 状态文案 + 解绑横幅（区别于普通离线提示）
+        setConnStatus(
+            if (force) "已被强制解绑" else "已解绑",
+            false,
+            if (force) "设备已被强制解绑，请重新配对绑定" else "设备已解绑，请重新配对绑定"
+        )
+        overviewFragment.setStaleBanner(true)
+        // 底部「解绑设备」按钮变为「删除设备」—— 解绑后只允许删除记录并返回设备列表
+        overviewFragment.setUnbindToDelete()
+        Toast.makeText(
+            this,
+            if (force) "该设备已被强制解绑，请使用被控端重新配对" else "该设备已解绑，请使用被控端重新配对",
+            Toast.LENGTH_LONG
+        ).show()
+    }
+
     private fun onPairAccepted() {
         mainHandler.removeCallbacks(PAIR_TIMEOUT_RUNNABLE)
         Log.d(TAG, "收到配对确认 PA，开始派生会话密钥 deviceId=${device.deviceId}")
@@ -493,6 +553,9 @@ class DeviceControlActivity : AppCompatActivity() {
             prefs.edit().putBoolean("remote_enabled_${device.deviceId}", true).apply()
             remoteEnabled = true
             overviewFragment.setRemoteEnabled(true)
+            // 恢复所有远程操作控件（解绑时被禁用的刷新 / MQTT 开关 / 快捷动作）
+            overviewFragment.setControlsEnabled(true)
+            overviewFragment.setUnbindToNormal()
             setConnStatus("已连接（已配对）", true)
             Toast.makeText(this, "已与控制端完成配对", Toast.LENGTH_SHORT).show()
         }
@@ -734,7 +797,12 @@ class DeviceControlActivity : AppCompatActivity() {
                 key = o.get("key").asString,
                 label = o.get("label").asString,
                 type = type,
-                value = if (type == "bool") o.get("value").asBoolean else o.get("value").asInt,
+                // 需求 1：新增 string 类型（消息渠道文本/掩码字段），不能再无脑 asInt，否则解析直接抛异常
+                value = when (type) {
+                    "bool" -> o.get("value").asBoolean
+                    "string" -> o.get("value").asString
+                    else -> runCatching { o.get("value").asInt }.getOrDefault(0)
+                },
                 writable = true,
                 min = o.get("min")?.takeIf { it.isJsonPrimitive }?.asInt,
                 max = o.get("max")?.takeIf { it.isJsonPrimitive }?.asInt,
@@ -768,12 +836,14 @@ class DeviceControlActivity : AppCompatActivity() {
                 label = o.get("label").asString
             ))
         }
-        val calendar = CalendarSnapshot(
-            punched = calendarObj?.get("punched")?.asString ?: "0",
-            scheduled = calendarObj?.get("scheduled")?.asString ?: "0",
-            missed = calendarObj?.get("missed")?.asString ?: "0",
-            recentPunch = calendarObj?.get("recentPunch")?.asString ?: "—",
-            today = calendarObj?.get("today")?.asString ?: "—",
+        // 已打卡天数 = 成功 + 超时（被控端按日期聚合，status 为 success/timeout）
+        val punchedDays = days.count { it.status == "success" || it.status == "timeout" }
+val calendar = CalendarSnapshot(
+            punched = punchedDays.toString(),
+            scheduled = calendarObj?.get("scheduled")?.getAsString() ?: "0",
+            missed = calendarObj?.get("missed")?.getAsString() ?: "0",
+            recentPunch = calendarObj?.get("recentPunch")?.getAsString() ?: "—",
+            today = calendarObj?.get("today")?.getAsString() ?: "—",
             days = days
         )
         // B5：解析电池采样序列（runtime.batterySeries 为数组，已在上文 mapOf 中被安全跳过）
@@ -787,7 +857,14 @@ class DeviceControlActivity : AppCompatActivity() {
         val history = mutableListOf<HistoryItem>()
         root.getAsJsonArray("history")?.forEach {
             val o = it.asJsonObject
-            history.add(HistoryItem(o.get("time").asString, o.get("result").asString))
+            val raw = o.get("result").asString
+            // 成功/超时统一显示「打卡·xx」，兼容被控端已/未加前缀两种格式
+            val result = when {
+                raw.contains("成功") -> "打卡·成功"
+                raw.contains("超时") -> "打卡·超时"
+                else -> raw
+            }
+            history.add(HistoryItem(o.get("time").asString, result))
         }
         return DeviceSnapshot(
             device = mapOf(root.getAsJsonObject("device")),
@@ -943,17 +1020,40 @@ class DeviceControlActivity : AppCompatActivity() {
         }
     }
 
+    // ===================== 删除设备（解绑后） =====================
+    private fun confirmDelete() {
+        AlertDialog.Builder(this)
+            .setTitle("删除设备")
+            .setMessage("确定删除该设备记录？删除后可重新扫码配对。")
+            .setPositiveButton("删除") { _, _ -> deleteDevice() }
+            .setNegativeButton("取消", null).show()
+    }
+
+    private fun deleteDevice() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            db.deviceDao().deleteById(device.deviceId)
+            withContext(Dispatchers.Main) {
+                Toast.makeText(this@DeviceControlActivity, "设备已删除", Toast.LENGTH_SHORT).show()
+                finish()
+            }
+        }
+    }
+
     fun setConnStatus(text: String, online: Boolean) {
+        setConnStatus(text, online, null)
+    }
+
+    fun setConnStatus(text: String, online: Boolean, bannerText: String?) {
         overviewFragment.setConnStatusText(text, online)
         // B4：离线横幅（连接中过渡态不显示）+ 断连禁用控制按钮
         val showBanner = remoteEnabled && !online && !text.contains("连接中")
         binding.offlineBanner.visibility = if (showBanner) View.VISIBLE else View.GONE
+        if (bannerText != null) {
+            binding.tvOfflineBanner.text = bannerText
+        } else if (showBanner) {
+            binding.tvOfflineBanner.text = "设备离线，数据可能不是最新"
+        }
         overviewFragment.setActionsEnabled(online)
-    }
-
-    fun setConnStatusDot(dot: View, tv: android.widget.TextView) {
-        val online = tv.text.toString().contains("已连接") && !tv.text.toString().contains("断开")
-        dot.setBackgroundResource(if (online) R.drawable.bg_dot_online else R.drawable.bg_dot_offline)
     }
 
     /** D2：动作回执 Snackbar（替代 Toast，置于页面底部更醒目） */
@@ -962,8 +1062,22 @@ class DeviceControlActivity : AppCompatActivity() {
         Snackbar.make(binding.root, "指令回执：$friendly", Snackbar.LENGTH_SHORT).show()
     }
 
-    /** D5：重新发起配对（控制端「重新配对」入口）—— 已连接则重发 P，否则重连后再由流程发起 */
+    /**
+     * D5：重新发起配对（控制端「重新配对」入口）。
+     * - 已配对但连接异常：已连接则重发 P，否则重连后再由流程发起。
+     * - 解绑后（device.bound=false）：密钥已失效，MQTT 自动配对不可用，
+     *   跳回 MainActivity 的扫码/剪贴板导入流程获取新 pairingToken。
+     */
     fun retryPair() {
+        if (!device.bound) {
+            // 解绑后：跳回设备列表页，由用户扫码或剪贴板导入重新配对
+            val intent = Intent(this, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                .putExtra("trigger_add_device", true)
+            startActivity(intent)
+            finish()
+            return
+        }
         if (mqttClient?.isConnected == true) {
             lifecycleScope.launch { publishPair() }
         } else {
@@ -989,13 +1103,23 @@ class DeviceControlActivity : AppCompatActivity() {
         val saved = prefs.getBoolean("remote_enabled_${device.deviceId}", true)
         if (saved != remoteEnabled) {
             remoteEnabled = saved
-            if (saved && mqttClient == null) {
+            if (saved && mqttClient == null && device.bound) {
                 setConnStatus("连接中…", false)
                 initMqtt()
             } else if (!saved) {
                 setConnStatus("MQTT 已关闭", false)
                 overviewFragment.setSnapshotHint(SnapshotHint.DISABLED)
             }
+        }
+        // 解绑态：确保控件保持禁用 + 底部按钮为「删除设备」（避免 onResume 误恢复）
+        if (!device.bound) {
+            overviewFragment.setControlsEnabled(false)
+            overviewFragment.setUnbindToDelete()
+            setConnStatus(
+                if (forceUnbound) "已被强制解绑" else "已解绑",
+                false,
+                if (forceUnbound) "设备已被强制解绑，请重新配对绑定" else "设备已解绑，请重新配对绑定"
+            )
         }
         overviewFragment.setRemoteEnabled(remoteEnabled)
     }
@@ -1010,7 +1134,8 @@ class DeviceControlActivity : AppCompatActivity() {
     override fun onStart() {
         super.onStart()
         // B2：从后台回到前台时，若远程开关开启且当前没有活跃连接，则重连并恢复刷新
-        if (remoteEnabled && mqttClient == null) {
+        // 解绑后 device.bound=false，不自动重连，需用户主动点「重新配对」
+        if (remoteEnabled && mqttClient == null && device.bound) {
             setConnStatus("连接中…", false)
             initMqtt()
         }
