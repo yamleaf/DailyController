@@ -8,6 +8,7 @@ import com.yample.daily.controller.databinding.ItemTaskRowBinding
 
 class TaskRowAdapter(
     private val items: MutableList<TaskItem>,
+    private val onEdit: (TaskItem) -> Unit,
     private val onDelete: (TaskItem) -> Unit
 ) : RecyclerView.Adapter<TaskRowAdapter.ViewHolder>() {
 
@@ -26,6 +27,7 @@ class TaskRowAdapter(
         val (color, bg) = statusStyle(item.status)
         holder.binding.tvTaskStatus.setTextColor(ContextCompat.getColor(holder.itemView.context, color))
         holder.binding.tvTaskStatus.background.setTint(ContextCompat.getColor(holder.itemView.context, bg))
+        holder.binding.btnEditTask.setOnClickListener { onEdit(item) }
         holder.binding.btnDeleteTask.setOnClickListener { onDelete(item) }
     }
 

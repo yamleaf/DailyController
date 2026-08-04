@@ -58,10 +58,22 @@
         android:textStyle="bold" />
 
     <TextView
-        android:id="@+id/btnDeleteTask"
+        android:id="@+id/btnEditTask"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginStart="10dp"
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="6dp"
+        android:text="编辑"
+        android:textColor="@color/md_primary"
+        android:textSize="13sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/btnDeleteTask"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
         android:paddingHorizontal="12dp"
         android:paddingVertical="6dp"
         android:text="删除"

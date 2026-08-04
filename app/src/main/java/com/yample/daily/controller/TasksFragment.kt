@@ -20,6 +20,7 @@ class TasksFragment : Fragment(), SnapshotFragment {
     private lateinit var taskAdapter: TaskRowAdapter
 
     var onAddTask: ((String) -> Unit)? = null
+    var onEditTask: ((TaskItem, String) -> Unit)? = null
     var onDeleteTask: ((TaskItem) -> Unit)? = null
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
@@ -29,13 +30,15 @@ class TasksFragment : Fragment(), SnapshotFragment {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        taskAdapter = TaskRowAdapter(taskItems, onDelete = { item ->
-            MaterialAlertDialogBuilder(requireContext())
-                .setTitle("删除任务")
-                .setMessage("确定删除打卡时间点 ${item.time}？")
-                .setPositiveButton("删除") { _, _ -> onDeleteTask?.invoke(item) }
-                .setNegativeButton("取消", null).show()
-        })
+        taskAdapter = TaskRowAdapter(taskItems,
+            onEdit = { item -> showEditTaskPicker(item) },
+            onDelete = { item ->
+                MaterialAlertDialogBuilder(requireContext())
+                    .setTitle("删除任务")
+                    .setMessage("确定删除打卡时间点 ${item.time}？")
+                    .setPositiveButton("删除") { _, _ -> onDeleteTask?.invoke(item) }
+                    .setNegativeButton("取消", null).show()
+            })
         binding.rvTasks.layoutManager = LinearLayoutManager(requireContext())
         binding.rvTasks.adapter = taskAdapter
         binding.btnAddTask.setOnClickListener { showAddTaskPicker() }
@@ -56,17 +59,38 @@ class TasksFragment : Fragment(), SnapshotFragment {
     }
 
     private fun showAddTaskPicker() {
-        val picker = MaterialTimePicker.Builder()
+        showTimePicker(-1, "添加打卡时间") { time -> onAddTask?.invoke(time) }
+    }
+
+    private fun showEditTaskPicker(item: TaskItem) {
+        // 预填当前任务时间（HH:mm:ss → hour/minute）
+        val parts = item.time.split(":")
+        val initHour = parts.getOrNull(0)?.toIntOrNull() ?: 9
+        val initMinute = parts.getOrNull(1)?.toIntOrNull() ?: 0
+        showTimePicker(initHour * 60 + initMinute, "修改打卡时间（原 ${item.time}）") { newTime ->
+            onEditTask?.invoke(item, newTime)
+        }
+    }
+
+    /**
+     * @param presetMinutes 预选时间（分钟数），<0 表示不预填（用默认 9:00）
+     * @param onPick 回调返回格式化后的 HH:mm:ss 字符串
+     */
+    private fun showTimePicker(presetMinutes: Int, title: String, onPick: (String) -> Unit) {
+        val builder = MaterialTimePicker.Builder()
             .setTimeFormat(TimeFormat.CLOCK_24H)
-            .setHour(9)
-            .setMinute(0)
-            .setTitleText("添加打卡时间")
-            .build()
+            .setTitleText(title)
+        if (presetMinutes >= 0) {
+            builder.setHour(presetMinutes / 60).setMinute(presetMinutes % 60)
+        } else {
+            builder.setHour(9).setMinute(0)
+        }
+        val picker = builder.build()
         picker.addOnPositiveButtonClickListener {
             val time = String.format("%02d:%02d:00", picker.hour, picker.minute)
-            onAddTask?.invoke(time)
+            onPick(time)
         }
-        picker.show(parentFragmentManager, "add_task")
+        picker.show(parentFragmentManager, "task_time")
     }
 
     override fun onDestroyView() {
