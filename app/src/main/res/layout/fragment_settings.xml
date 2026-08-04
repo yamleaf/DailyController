@@ -139,7 +139,62 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
             android:paddingHorizontal="4dp"
-            android:text="超时时间：任务启动后停留在目标应用的最长时间。&#10;"
+            android:text="超时时间：任务启动后停留在目标应用的最长时间。"
+            android:textColor="@color/md_onSurfaceVariant"
+            android:textSize="12sp" />
+
+        <!-- 解绑设备：入口由概览页移至设置页 -->
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            app:cardBackgroundColor="@color/md_surface"
+            app:cardCornerRadius="20dp"
+            app:cardElevation="0dp"
+            app:strokeColor="@color/md_outlineVariant"
+            app:strokeWidth="1dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingHorizontal="16dp"
+                android:paddingVertical="14dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="设备管理"
+                    android:textColor="@color/md_onSurface"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="解绑后将清除本机配对并通知被控端；被控端记录仍可在其本机重新配对"
+                    android:textColor="@color/md_onSurfaceVariant"
+                    android:textSize="12sp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnUnbindDevice"
+                    style="@style/Widget.Material3.Button.OutlinedButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="解绑设备"
+                    android:textColor="@color/md_error"
+                    app:strokeColor="@color/md_error" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:paddingHorizontal="4dp"
+            android:text="&#10;"
             android:textColor="@color/md_onSurfaceVariant"
             android:textSize="12sp" />
 

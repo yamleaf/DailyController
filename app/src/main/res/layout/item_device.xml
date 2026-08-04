@@ -77,6 +77,15 @@
             app:layout_constraintEnd_toStartOf="@id/imgChevron"
             app:layout_constraintTop_toTopOf="parent" />
 
+        <!-- 状态灯高光：白色径向光泽叠在 dotOnline 左上角，使其从扁平圆点变为球面质感（固定白色，不参与状态 tint） -->
+        <View
+            android:id="@+id/dotGloss"
+            android:layout_width="6dp"
+            android:layout_height="6dp"
+            android:background="@drawable/bg_dot_gloss"
+            app:layout_constraintStart_toStartOf="@id/dotOnline"
+            app:layout_constraintTop_toTopOf="@id/dotOnline" />
+
         <ImageView
             android:id="@+id/imgChevron"
             android:layout_width="18dp"

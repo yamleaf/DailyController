@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 状态灯高光：左上角白色径向渐变，营造球面光泽（不参与 tint，固定白色） -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <gradient
+        android:type="radial"
+        android:centerX="0.34"
+        android:centerY="0.28"
+        android:gradientRadius="7dp"
+        android:startColor="#D8FFFFFF"
+        android:endColor="#00FFFFFF" />
+</shape>

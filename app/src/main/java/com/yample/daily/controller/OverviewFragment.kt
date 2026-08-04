@@ -27,8 +27,6 @@ class OverviewFragment : Fragment(), SnapshotFragment {
     private val binding get() = _binding!!
     private var snapshot: DeviceSnapshot? = null
     var onRefreshClick: (() -> Unit)? = null
-    var onUnbindClick: (() -> Unit)? = null
-    var onDeleteClick: (() -> Unit)? = null
     var onRemoteToggle: ((Boolean) -> Unit)? = null
     var onAction: ((String) -> Unit)? = null
     var onRePairClick: (() -> Unit)? = null
@@ -41,8 +39,6 @@ class OverviewFragment : Fragment(), SnapshotFragment {
     private val swipeRefreshRunnable = Runnable { triggerRefresh() }
     private val swipeRefreshDelayMs = 3000L
     private var remoteInitializing = false
-    /** 解绑后底部按钮变为「删除设备」模式 */
-    private var isDeletedMode = false
     /** 视图就绪前暂存的连接状态文案（onCreate 同步调用可能早于 onCreateView） */
     private var pendingConnStatus: Pair<String, Boolean>? = null
     /** 状态灯：最后状态文案与 online 标记，供 render 重绘时复用 */
@@ -72,9 +68,6 @@ class OverviewFragment : Fragment(), SnapshotFragment {
         binding.swipeRefresh.setOnRefreshListener { onSwipeRefresh() }
         binding.btnRefresh.setOnClickListener { triggerRefresh() }
         binding.btnReconnect.setOnClickListener { onReconnectClick?.invoke() }
-        binding.btnUnbind.setOnClickListener {
-            if (isDeletedMode) onDeleteClick?.invoke() else onUnbindClick?.invoke()
-        }
         binding.switchRemote.setOnCheckedChangeListener { _, isChecked ->
             if (!remoteInitializing) onRemoteToggle?.invoke(isChecked)
         }
@@ -226,7 +219,7 @@ class OverviewFragment : Fragment(), SnapshotFragment {
         }
     }
 
-    /** 状态 → (颜色, 是否脉冲)：绿=在线已配对 / 琥珀=配对中·未配对·连接中 / 红=失败·错误 / 灰=已解绑·离线 */
+    /** 状态 → (颜色, 是否脉冲)：绿=在线已配对 / 琥珀=配对中·未配对·连接中 / 红=失败·错误·无心跳 / 灰=已解绑·离线·连接中 */
     private fun resolveStatus(text: String, online: Boolean, ctx: android.content.Context): Pair<Int, Boolean> {
         val green = Color.parseColor("#16A34A")
         val amber = Color.parseColor("#F59E0B")
@@ -236,7 +229,10 @@ class OverviewFragment : Fragment(), SnapshotFragment {
             text == "连接失败" -> red to false
             text.contains("已解绑") || text.contains("已被强制解绑") -> gray to false
             text.contains("订阅被拒") || text.contains("配对发送失败") -> red to false
+            // 心跳探活检测到的被控端离线：红灯 + 不脉冲（不像「连接中」那样的灰色脉冲）
+            text.contains("无心跳响应") || text.contains("设备离线") -> red to false
             text.contains("配对中") || text.contains("配对重试") || text.contains("未配对") -> amber to true
+            text == "探活中…" -> amber to true
             text.contains("连接中") -> gray to true
             text.contains("已配对") -> green to false
             text.contains("已连接") -> (if (online) green else gray) to false
@@ -277,20 +273,6 @@ class OverviewFragment : Fragment(), SnapshotFragment {
         // 快捷动作一并受控（解绑时禁用，配对成功后随在线态恢复）
         _actionsOnline = enabled
         applyActionState()
-    }
-
-    /** 解绑后将底部「解绑设备」按钮变为「删除设备」 */
-    fun setUnbindToDelete() {
-        isDeletedMode = true
-        if (_binding == null) return
-        binding.btnUnbind.text = "删除设备"
-    }
-
-    /** 重新配对成功后恢复底部按钮为「解绑设备」 */
-    fun setUnbindToNormal() {
-        isDeletedMode = false
-        if (_binding == null) return
-        binding.btnUnbind.text = "解绑设备"
     }
 
     /** D2：快捷动作下发中置灰防重复点击；与在线态取交集 */

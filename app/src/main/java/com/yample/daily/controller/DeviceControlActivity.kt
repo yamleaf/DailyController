@@ -55,15 +55,32 @@ class DeviceControlActivity : AppCompatActivity() {
     private val PAIR_MAX_RETRIES = 3
     private val PAIR_TIMEOUT_MS = 12_000L
     private val PAIR_TIMEOUT_RUNNABLE = Runnable { onPairTimeout() }
-    private val REFRESH_MS = 15_000L
-    private val refreshRunnable = Runnable { doPeriodicRefresh() }
-    private val QUERY_TIMEOUT_MS = 12_000L
+    // 首次进入详情页的 2s 探活：单条 snapshot 查询的超时。配合 1 次重试，最坏 4s 内判定离线。
+    private val QUERY_TIMEOUT_MS = 2_000L
     private val queryTimeoutRunnable = Runnable { onQueryTimeout() }
     /** D2：动作下发兜底恢复（ACK 丢失时 10s 后自动解灰） */
-    private val actionBusyResetRunnable = Runnable { overviewFragment.setActionsBusy(false) }
+    private val actionBusyResetRunnable = Runnable {
+        // 兜底恢复时同步清掉挂起 rid，否则迟到的 ACK 仍会被当成「当前动作」误弹 Snackbar
+        pendingActionRid = null
+        overviewFragment.setActionsBusy(false)
+    }
     private var queryPendingRid: String? = null
     private var queryRetryCount = 0
-    private val QUERY_MAX_RETRIES = 2
+    /** 首次探活允许的重试次数：1 → 共 2 次尝试，两次都超时即判定离线 */
+    private val QUERY_MAX_RETRIES = 1
+
+    // ===================== 首次进入探活 =====================
+    /**
+     * 控制端「首次进入设备详情页」且设备已配对/在线时才主动拉快照：
+     * 发一条 snapshot 查询作为 5s 探活，被控端在 5s 内回响应即证明在线且带回快照；
+     * 超时则重试一次，两次都失败 → 判定离线（色灯变红）。
+     * 该标志位确保整个 Activity 生命周期只主动拉一次全量，其余刷新只来自手动刷新/被控端推送。
+     */
+    private var firstEntryProbeStarted = false
+    /** 当前是否处于首次探活窗口（决定查询超时时是否升级为「离线」而非仅提示失败） */
+    private var firstEntryProbeActive = false
+    /** 是否已经判定被控端离线（防止重复刷屏/重复动作） */
+    private var recentlyMarkedOffline = false
 
     private var currentSnapshot: DeviceSnapshot? = null
     /** 原始快照 JSON（按区块合并增量推送用），持久化到本地缓存 */
@@ -81,8 +98,26 @@ class DeviceControlActivity : AppCompatActivity() {
     private var lastToastAt = 0L
     /** B5：最近一次查询发送时间戳，用于推导连接质量(RTT) */
     private var lastQuerySentTs = 0L
-    /** B5：最近一次下发指令的展示名，用于「最近指令」回执关联 */
+    /** B5：最近一次下发指令的展示名，用于「最近指令」回执关联（无 rid 匹配时的兜底） */
     private var lastCommandLabel = ""
+
+    /**
+     * rid → 指令展示名。单变量 lastCommandLabel 在「连续下发多条指令」时会被后一条覆盖，
+     * 导致先回来的 ACK 关联到错误的指令名（「最近指令」错乱）。按 rid 精确关联可根治。
+     * 用 LinkedHashMap 并限长，避免 ACK 丢失时无限增长。
+     */
+    private val pendingCommandLabels = LinkedHashMap<String, String>()
+
+    /** 当前处于「下发中」的一次性动作 rid：只有它的回执才应解除快捷按钮置灰 */
+    private var pendingActionRid: String? = null
+
+    /** 登记 rid→指令名；ACK 丢失时淘汰最早记录，避免映射无限增长 */
+    private fun rememberCommandLabel(rid: String, label: String) {
+        if (pendingCommandLabels.size >= 32) {
+            pendingCommandLabels.keys.firstOrNull()?.let { pendingCommandLabels.remove(it) }
+        }
+        pendingCommandLabels.put(rid, label)
+    }
 
     private lateinit var overviewFragment: OverviewFragment
     private lateinit var tasksFragment: TasksFragment
@@ -160,8 +195,6 @@ class DeviceControlActivity : AppCompatActivity() {
                 overviewFragment.setRefreshing(false)
                 sendQuery()
             }
-            onUnbindClick = { confirmUnbind() }
-            onDeleteClick = { confirmDelete() }
             onRemoteToggle = { on -> this@DeviceControlActivity.setRemoteEnabled(on) }
             onAction = { action -> sendAction(action) }
             onRePairClick = { retryPair() }
@@ -171,6 +204,7 @@ class DeviceControlActivity : AppCompatActivity() {
         }
         tasksFragment = TasksFragment().apply {
             onAddTask = { time -> sendTask("add", time, null) }
+            onEditTask = { item, newTime -> sendTask("update", newTime, item.time) }
             onDeleteTask = { item -> sendTask("delete", item.time, item.time) }
         }
         calendarFragment = CalendarFragment()
@@ -186,6 +220,8 @@ class DeviceControlActivity : AppCompatActivity() {
                 )
             }
             onChannelChange = { v -> sendUpdate(Protocol.FIELD_MSG_CHANNEL, PacketValue.IntValue(v)) }
+            // 需求：解绑设备入口移至设置页
+            onUnbind = { confirmUnbind() }
         }
         permissionsFragment = PermissionsFragment()
 
@@ -253,13 +289,17 @@ class DeviceControlActivity : AppCompatActivity() {
         // 解决「重连后订阅丢失导致永远收不到 PA/快照」的问题。
         // 注意：初始连接的订阅 + 发配对放在 connect() 之后直接执行（见下方 try 块），
         // 不依赖 connectComplete 是否在初始连接触发——部分 Paho 版本初始连接不回调 connectComplete，
-        // 若只在此处处理，会出现“已连接但从未订阅/发配对、永远配对中”的回归。
+        // 若只在此处处理，会出现"已连接但从未订阅/发配对、永远配对中"的回归。
         mqttClient?.setCallback(object : MqttCallbackExtended {
             override fun connectComplete(reconnect: Boolean, serverURI: String?) {
                 MqttQuota.onConnect(this@DeviceControlActivity)
-                runOnUiThread { setConnStatus("已连接", true) }
+                // broker 连接成功 ≠ 被控端在线：先中性「连接中」(灰)，避免误亮绿灯；
+                // 真实在线态由后续「探活中→快照确认」或配对分支决定。
+                runOnUiThread { setConnStatus("连接中…", false) }
                 // 每次连接/重连都重新订阅全部主题；订阅是幂等的。
                 lifecycleScope.launch(Dispatchers.IO) { subscribeTopics() }
+                // 重连成功时复位离线标记：若此前首次探活判定离线，本次重连会重新走首次探活逻辑。
+                recentlyMarkedOffline = false
                 if (device.sessionSecret.isBlank()) {
                     if (reconnect) {
                         // 重连场景：延迟一点再发配对，确保上方订阅已对 broker 生效
@@ -268,14 +308,21 @@ class DeviceControlActivity : AppCompatActivity() {
                     }
                     // 初始连接不在此发配对：connect() 之后的初始流程负责，避免重复发起。
                 } else {
-                    // connectComplete 跑在 Paho 后台回调线程，必须切回主线程再碰 UI，
-                    // 否则 setConnStatus/startRefresh 触发「Animations may only be started on the main thread」。
-                    // 与下方初始连接分支（runOnUiThread）保持一致。
-                    runOnUiThread {
-                        setConnStatus("已连接（已配对）", true)
-                        startRefresh()
-                    }
-                    mainHandler.postDelayed({ sendQuery() }, 1_500L)
+                    // 复位首次探活标志：Paho 自动重连（isAutomaticReconnect）不经过 disconnectMqtt
+                    // （只有那里会复位 firstEntryProbeStarted）。若不复位，重连后 startFirstEntryProbe
+                    // 会因 firstEntryProbeStarted=true 直接 return —— 只把色灯置成「探活中…」(琥珀)
+                    // 却永远不再发探活，色灯卡在黄色直到手动刷新/收到推送（本工作区已移除 15s 周期刷新，
+                    // 没有自动兜底）。复位后每次（重）连都重新探活：被控端在线 → 快照确认转绿；
+                    // 离线 → 两次失败转红，不再卡死。首次连接时 connectComplete 与下方初始分支都会触发，
+                    // 由 sendQuery 的 queryPendingRid 并发守护去重。
+                    firstEntryProbeStarted = false
+                    // 首次进入详情页：仅此时主动拉一次快照（5s 探活 + 重试 → 离线判定）。
+                    // 不再周期刷新，其余刷新只来自手动刷新 / 被控端推送。
+                    // 注意：此处不再无条件 setConnStatus("探活中…") —— 琥珀态统一由
+                    // startFirstEntryProbe 在真正发出探活时设置。否则 connectComplete 与
+                    // connect() 返回分支都会置「探活中…」，后到者会把已经确认成功的绿灯覆盖成黄、
+                    // 而它的 startFirstEntryProbe 又因标志位直接 return，结果就是「灰→黄→绿→黄(卡死)」。
+                    startFirstEntryProbe()
                 }
             }
 
@@ -285,9 +332,11 @@ class DeviceControlActivity : AppCompatActivity() {
             }
 
             override fun messageArrived(topic: String?, message: MqttMessage?) {
-                message?.payload?.let {
+                message?.let {
                     bumpQuota(0, 1)
-                    handleIncoming(topic ?: "", String(it))
+                    // 传入 retained 标志：broker 保留的历史状态不能证明设备当前在线，
+                    // 只有被控端主动发布的非 retained 消息才可信。
+                    handleIncoming(topic ?: "", String(it.payload), it.isRetained)
                 }
             }
 
@@ -304,13 +353,15 @@ class DeviceControlActivity : AppCompatActivity() {
                 // 规避部分 Paho 版本初始连接不回调 connectComplete 导致永远收不到 PA/快照）。
                 Log.d(TAG, "初始连接成功 deviceId=${device.deviceId} ctlUser=${device.ctlUser} 主题前缀=${MqttPacket.TOPIC_PREFIX}/${device.deviceId}")
                 subscribeTopics()
+                // 与 connectComplete 分支保持一致：复位离线标记，首次探活在下方配对分支触发。
+                recentlyMarkedOffline = false
                 if (device.sessionSecret.isBlank()) {
                     pairRetries = 0
                     publishPair()
                 } else {
-                    runOnUiThread { setConnStatus("已连接（已配对）", true) }
-                    startRefresh()
-                    mainHandler.postDelayed({ sendQuery() }, 1_500L)
+                    // 首次进入详情页：仅此时主动拉一次快照；
+                    // 琥珀「探活中」由 startFirstEntryProbe 统一设置（理由见 connectComplete 分支注释）
+                    startFirstEntryProbe()
                 }
             } catch (e: MqttException) {
                 e.printStackTrace()
@@ -330,12 +381,14 @@ class DeviceControlActivity : AppCompatActivity() {
 
     private suspend fun subscribeTopics() {
         val pushTopic = "${MqttPacket.TOPIC_PREFIX}/${device.deviceId}/push"
+        val alertTopic = "${MqttPacket.TOPIC_PREFIX}/${device.deviceId}/alert"
         val topics = listOf(
             "${MqttPacket.TOPIC_PREFIX}/${device.deviceId}/status",
             "${MqttPacket.TOPIC_PREFIX}/${device.deviceId}/ack",
             "${MqttPacket.TOPIC_PREFIX}/${device.deviceId}/pair/accept",
             "${MqttPacket.TOPIC_PREFIX}/${device.deviceId}/resp",
-            pushTopic
+            pushTopic,
+            alertTopic
         )
         var anyDenied = false
         var pushDenied = false
@@ -399,9 +452,12 @@ class DeviceControlActivity : AppCompatActivity() {
     }
 
     private fun disconnectMqtt() {
-        mainHandler.removeCallbacks(refreshRunnable)
         mainHandler.removeCallbacks(queryTimeoutRunnable)
         mainHandler.removeCallbacks(PAIR_TIMEOUT_RUNNABLE)
+        // 断连时清空探活/离线状态，下次连接（含重连/回前台）重新进行首次探活
+        firstEntryProbeStarted = false
+        firstEntryProbeActive = false
+        recentlyMarkedOffline = false
         queryPendingRid = null
         queryRetryCount = 0
         val client = mqttClient ?: return
@@ -472,41 +528,62 @@ class DeviceControlActivity : AppCompatActivity() {
         }
     }
 
-    private fun handleIncoming(topic: String, payload: String) {
+    private fun handleIncoming(topic: String, payload: String, retained: Boolean = false) {
+        // 被控端发来任何消息 → 若此前已被判定离线（首次探活两次失败），立即恢复在线态。
+        // 依赖「消息到达」而非定时探测，避免后台轮询拉高待机功耗。
+        if (recentlyMarkedOffline) {
+            runOnUiThread { recoverFromFalseOffline() }
+        }
         when {
-            topic.endsWith("/status") -> {
-                val raw = payload.trim()
-                val online = raw == "online"
-                val text = when (raw) {
-                    "online" -> "已连接"
-                    "unbound" -> "已解绑"
-                    "force_unbound" -> "已被强制解绑"
-                    else -> "设备离线"
-                }
-                Log.d(TAG, "收到被控端状态消息 raw=$raw -> 显示「$text」(deviceId=${device.deviceId})")
-                // 被控端主动解绑（含强制解绑）：断开本机 MQTT、清配对态、禁用操作，提示重新配对
-                if (raw == "force_unbound" || raw == "unbound") {
-                    // 配对进行中（刚通过剪贴板/扫码导入，pairingToken 仍有效）：忽略此前残留的 retained 解绑消息。
-                    // 否则订阅 status 时会立刻收到旧的 force_unbound/unbound 并误触发解绑、断开 MQTT，
-                    // 导致无法完成重新配对（被控端接受配对后会重新发布 online 覆盖该残留状态）。
-                    if (device.pairingToken.isNotBlank()) {
-                        Log.d(TAG, "忽略残留解绑状态 raw=$raw：当前正处于配对中(pairingToken 有效)，等待被控端接受配对后回 online")
-                        return
-                    }
-                    runOnUiThread { handleRemoteUnbound(force = raw == "force_unbound") }
-                    return
-                }
-                runOnUiThread { setConnStatus(text, online) }
-                // 收到被控端 online 且当前没有待返回的快照时，主动请求一次快照
-                if (online && device.sessionSecret.isNotBlank() && queryPendingRid == null) {
-                    sendQuery()
-                }
-            }
+            topic.endsWith("/status") -> handleStatus(payload.trim(), retained)
             topic.endsWith("/pair/accept") -> onPairAccepted()
             topic.endsWith("/resp") -> onSnapshot(payload)
             topic.endsWith("/push") -> onPush(payload)
+            topic.endsWith("/alert") -> onAlert(payload)
             topic.endsWith("/ack") -> handleAck(payload)
         }
+    }
+
+    /**
+     * 处理被控端状态主题 dt/{id}/status。
+     * 关键：broker 保留的「online」是历史值，不能证明设备当前在线（可能早已关机/断网），
+     * 因此不能据此点亮绿灯 —— 真实在线态只由「首次探活的快照查询成功 / 被控端推送 / 非 retained 的在线发布」确认。
+     * 只有显式「offline」或解绑类消息才可信地判离线/解绑。
+     */
+    private fun handleStatus(raw: String, retained: Boolean) {
+        val text = when (raw) {
+            "online" -> "在线（已配对）"
+            "unbound" -> "已解绑"
+            "force_unbound" -> "已被强制解绑"
+            else -> "设备离线"
+        }
+        Log.d(TAG, "收到被控端状态消息 raw=$raw retained=$retained -> 显示「$text」(deviceId=${device.deviceId})")
+        // 被控端主动解绑（含强制解绑）：断开本机 MQTT、清配对态、禁用操作，提示重新配对
+        if (raw == "force_unbound" || raw == "unbound") {
+            // 配对进行中（刚通过剪贴板/扫码导入，pairingToken 仍有效）：忽略此前残留的 retained 解绑消息。
+            // 否则订阅 status 时会立刻收到旧的 force_unbound/unbound 并误触发解绑、断开 MQTT，
+            // 导致无法完成重新配对（被控端接受配对后会重新发布 online 覆盖该残留状态）。
+            if (device.pairingToken.isNotBlank()) {
+                Log.d(TAG, "忽略残留解绑状态 raw=$raw：当前正处于配对中(pairingToken 有效)，等待被控端接受配对后回 online")
+                return
+            }
+            runOnUiThread { handleRemoteUnbound(force = raw == "force_unbound") }
+            return
+        }
+        if (raw == "offline") {
+            // 设备显式发布离线（含 lastWill）：可信，直接判离线（红灯）
+            runOnUiThread { setConnStatus("设备离线", false) }
+            return
+        }
+        // raw == "online"：
+        if (retained) {
+            // broker 保留的历史 online，不点亮绿灯；维持「探活中」或当前离线态，
+            // 真实在线由首次探活的快照查询 / 推送确认。
+            Log.d(TAG, "忽略 retained online：不点亮绿灯，等首次探活/推送确认真实在线")
+            return
+        }
+        // 非 retained 的在线消息：被控端刚刚主动发布 online，确证在线 → 点亮绿灯
+        runOnUiThread { setConnStatus(text, true) }
     }
 
     /**
@@ -533,8 +610,6 @@ class DeviceControlActivity : AppCompatActivity() {
             if (force) "设备已被强制解绑，请重新配对绑定" else "设备已解绑，请重新配对绑定"
         )
         overviewFragment.setStaleBanner(true)
-        // 底部「解绑设备」按钮变为「删除设备」—— 解绑后只允许删除记录并返回设备列表
-        overviewFragment.setUnbindToDelete()
         Toast.makeText(
             this,
             if (force) "该设备已被强制解绑，请使用被控端重新配对" else "该设备已解绑，请使用被控端重新配对",
@@ -555,12 +630,11 @@ class DeviceControlActivity : AppCompatActivity() {
             overviewFragment.setRemoteEnabled(true)
             // 恢复所有远程操作控件（解绑时被禁用的刷新 / MQTT 开关 / 快捷动作）
             overviewFragment.setControlsEnabled(true)
-            overviewFragment.setUnbindToNormal()
             setConnStatus("已连接（已配对）", true)
             Toast.makeText(this, "已与控制端完成配对", Toast.LENGTH_SHORT).show()
         }
-        sendQuery()
-        startRefresh()
+        // 配对刚完成即视为「首次在线」：发起一次探活 + 快照拉取（含重试与离线判定）
+        startFirstEntryProbe()
     }
 
     private fun handleAck(payload: String) {
@@ -568,8 +642,14 @@ class DeviceControlActivity : AppCompatActivity() {
         try {
             val packet = gson.fromJson(payload, MqttPacket::class.java)
             val result = packet?.v?.toStringValue() ?: "-"
+            // 被控端有两类回执是「码:详情」形式（TASK_FAIL:该时间点已存在 / ACTION_FAIL:xxx，
+            // 见 MqttAgentService 400/464/492/503/515/520 行）。若直接对整串做精确匹配，
+            // 这些分支永远命中不了、只会落到 else 弹出原始码，且不会触发快照刷新。
+            // 因此统一按冒号前的「码」做分支，冒号后的部分作为详情展示。
+            val code = result.substringBefore(':')
+            val detail = result.substringAfter(':', "")
             runOnUiThread {
-                when (result) {
+                when (code) {
                     "NO_PAIRING" -> {
                         // 被控端尚未生成配对码：停止重试循环，避免一直卡在“配对中”
                         mainHandler.removeCallbacks(PAIR_TIMEOUT_RUNNABLE)
@@ -584,21 +664,51 @@ class DeviceControlActivity : AppCompatActivity() {
                     }
                     "UNBOUND" -> Toast.makeText(this, "被控端：当前未绑定，请先用二维码完成配对", Toast.LENGTH_SHORT).show()
                     "SIGN_FAIL" -> Toast.makeText(this, "被控端：指令签名校验失败", Toast.LENGTH_SHORT).show()
-                    "SUCCESS" -> { sendQuery() }
-                    "TASK_OK" -> { Toast.makeText(this, "任务已更新", Toast.LENGTH_SHORT).show(); sendQuery() }
-                    "TASK_FAIL" -> Toast.makeText(this, "任务操作失败：${result.removePrefix("TASK_FAIL:")}", Toast.LENGTH_LONG).show()
+                    // 成功路径不再拉全量快照：被控端在回 ACK 后会 publishPush 增量（action 成功时
+                    // handleAction 主动推送 statuses/runtime/tasks；任务增删改走广播 → remoteChangedReceiver
+                    // 推送 tasks/settings/statuses/runtime），onPush 已按 delta 覆盖合并本地缓存并刷新 UI。
+                    // 这里若再 forceRefreshSnapshot() 查全量：① 与增量机制重复，违背「增量即最终态」；
+                    // ② 全量查询命中被控端 30s 缓存可能返回旧值，把刚更新的增量覆盖回去（灰→蓝→灰）。
+                    "SUCCESS" -> Unit
+                    "TASK_OK" -> Toast.makeText(this, "任务已更新", Toast.LENGTH_SHORT).show()
+                    // 以下失败回执一律补拉一次快照：本地 UI（Switch/任务列表）在下发时已乐观翻转，
+                    // 若被控端拒绝而不回滚，本地显示会与被控端真实状态长期不一致。
+                    "TASK_FAIL" -> {
+                        Toast.makeText(this, "任务操作失败：$detail", Toast.LENGTH_LONG).show()
+                        forceRefreshSnapshot()
+                    }
+                    "ACTION_FAIL" -> {
+                        Toast.makeText(this, "动作执行失败：$detail", Toast.LENGTH_LONG).show()
+                        forceRefreshSnapshot()
+                    }
                     "SNAPSHOT_FAIL" -> Toast.makeText(this, "快照生成失败", Toast.LENGTH_SHORT).show()
-                    "NEED_MANUAL" -> Toast.makeText(this, "该设置需在系统/被控端手动开启（如无障碍、截屏权限）", Toast.LENGTH_LONG).show()
-                    "SERVICE_UNAVAILABLE" -> Toast.makeText(this, "被控端服务未就绪（通知监听未运行），动作未执行", Toast.LENGTH_LONG).show()
+                    "NEED_MANUAL" -> {
+                        Toast.makeText(this, "该设置需在系统/被控端手动开启（如无障碍、截屏权限）", Toast.LENGTH_LONG).show()
+                        forceRefreshSnapshot()
+                    }
+                    "SERVICE_UNAVAILABLE" -> {
+                        Toast.makeText(this, "被控端服务未就绪（通知监听未运行），动作未执行", Toast.LENGTH_LONG).show()
+                        forceRefreshSnapshot()
+                    }
                     "UNKNOWN_ACTION" -> Toast.makeText(this, "未知动作：$result", Toast.LENGTH_SHORT).show()
-                    "DUP_OR_STALE" -> Toast.makeText(this, "被控端：请求已过期或重复（请检查两端时间是否一致）", Toast.LENGTH_LONG).show()
+                    "DUP_OR_STALE" -> {
+                        Toast.makeText(this, "被控端：请求已过期或重复（请检查两端时间是否一致）", Toast.LENGTH_LONG).show()
+                        forceRefreshSnapshot()
+                    }
+                    // CMD_SYNC 的探活回执，无需打扰用户
+                    "ONLINE" -> Unit
                     else -> Toast.makeText(this, "设备回执：$result", Toast.LENGTH_SHORT).show()
                 }
-                addRecentCommand(lastCommandLabel, ackFriendly(result))
-                // D2：收到回执，恢复快捷按钮并弹 Snackbar 提示结果（仅一次性动作）
-                overviewFragment.setActionsBusy(false)
-                mainHandler.removeCallbacks(actionBusyResetRunnable)
-                if (lastCommandLabel in setOf("打卡", "执行任务", "终止任务", "考勤记录", "截屏")) {
+                // 按 rid 精确关联指令名，避免连续下发时「最近指令」张冠李戴；取不到再退回单变量兜底
+                val ackRid = packet?.rid
+                val label = ackRid?.let { pendingCommandLabels.remove(it) } ?: lastCommandLabel
+                addRecentCommand(label, ackFriendly(result))
+                // D2：只有「当前下发中的一次性动作」自己的回执才解除置灰并弹 Snackbar。
+                // 原实现无条件解锁，设置/任务类回执会把动作按钮提前解锁、Snackbar 也会错弹。
+                if (ackRid != null && ackRid == pendingActionRid) {
+                    pendingActionRid = null
+                    overviewFragment.setActionsBusy(false)
+                    mainHandler.removeCallbacks(actionBusyResetRunnable)
                     showActionSnackbar(result)
                 }
             }
@@ -606,21 +716,46 @@ class DeviceControlActivity : AppCompatActivity() {
         }
     }
 
-    /** B5：把回执结果转成简短展示文案（用于「最近指令」列表） */
-    private fun ackFriendly(result: String): String = when (result) {
+    /** B5：把回执结果转成简短展示文案（用于「最近指令」列表）。与 handleAck 一致按冒号前的码分支 */
+    private fun ackFriendly(result: String): String = when (result.substringBefore(':')) {
         "NO_PAIRING" -> "尚未生成配对码"
         "TOKEN_MISMATCH" -> "配对码不一致或已过期"
         "UNBOUND" -> "当前未绑定"
         "SIGN_FAIL" -> "签名校验失败"
         "SUCCESS" -> "成功"
+        "ONLINE" -> "在线"
         "TASK_OK" -> "任务已更新"
-        "TASK_FAIL" -> "任务失败：${result.removePrefix("TASK_FAIL:")}"
+        "TASK_FAIL" -> "任务失败：${result.substringAfter(':', "")}"
+        "ACTION_FAIL" -> "动作失败：${result.substringAfter(':', "")}"
         "SNAPSHOT_FAIL" -> "快照生成失败"
         "NEED_MANUAL" -> "需手动开启"
         "SERVICE_UNAVAILABLE" -> "服务未就绪"
         "UNKNOWN_ACTION" -> "未知动作"
         "DUP_OR_STALE" -> "请求过期或重复"
         else -> "回执：$result"
+    }
+
+    /**
+     * 回执后强制刷新一次快照。
+     *
+     * 仅用于「被控端不回推送增量」的失败/异常回执（TASK_FAIL / ACTION_FAIL / NEED_MANUAL /
+     * SERVICE_UNAVAILABLE / DUP_OR_STALE）：下发动作时本地 UI 已乐观翻转，若被控端拒绝而本地不回滚，
+     * 显示会长期不一致，因此需拉一次全量校正。
+     *
+     * 成功路径（SUCCESS / TASK_OK）不再走这里：被控端会主动 publishPush 增量，onPush 覆盖合并本地
+     * 缓存并刷新 UI，避免全量查询命中被控端 30s 缓存返回旧值、覆盖掉刚收到的增量。
+     *
+     * 直接调 sendQuery() 会被它内部的并发守护（queryPendingRid != null 即 return）吞掉：
+     * 下发动作时若刚好有查询在途，这次「真正需要的刷新」就丢了。这里先清掉挂起 rid 与超时回调，
+     * 保证一定能发出去。延迟一小段时间是因为被控端 START/STOP 是异步启动调度器，
+     * ACK 先于状态落地返回，立刻查会拿到执行前的旧状态。
+     */
+    private fun forceRefreshSnapshot(delayMs: Long = 400L) {
+        mainHandler.postDelayed({
+            queryPendingRid = null
+            mainHandler.removeCallbacks(queryTimeoutRunnable)
+            sendQuery()
+        }, delayMs)
     }
 
     /** B5：转发到总览页「最近指令」列表（fragment 自身维护定长队列与渲染） */
@@ -644,10 +779,14 @@ class DeviceControlActivity : AppCompatActivity() {
         val rid = UUID.randomUUID().toString()
         queryPendingRid = rid
         lastQuerySentTs = ts
+        // 关键修复：超时计时在主线程立即排定，置于所有异步/异常路径之前。
+        // 无论下方 publish 成败，探活都有兜底（落绿或落红），不会再永久卡在「探活中…」黄。
+        // （原实现把 postDelayed 放在 IO 协程的 publish 之后，一旦 publish 抛异常就永不排超时。）
+        mainHandler.postDelayed(queryTimeoutRunnable, QUERY_TIMEOUT_MS)
         val sign = MqttSigner.sign(device.sessionSecret, device.deviceId, ts, rid, "snapshot", "", "", MqttPacket.CMD_QUERY)
         val packet = MqttPacket(c = MqttPacket.CMD_QUERY, f = "snapshot", v = null, rid = rid, ts = ts, sign = sign)
         // 发布移到 IO 协程，避免 publish(QoS1 同步等待 PUBACK) 阻塞主线程导致 ANR；
-        // 末尾的配额/UI/超时计时仍在主线程执行（sendQuery 由 mainHandler 在主线程调用）。
+        // 超时计时已在主线程排定，发布结果只影响快照/提示。
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 mqttClient?.publish("${MqttPacket.TOPIC_PREFIX}/${device.deviceId}/cmd",
@@ -657,11 +796,9 @@ class DeviceControlActivity : AppCompatActivity() {
                 runOnUiThread {
                     if (currentSnapshot == null) overviewFragment.setSnapshotHint(SnapshotHint.WAITING)
                 }
-                mainHandler.postDelayed(queryTimeoutRunnable, QUERY_TIMEOUT_MS)
             } catch (e: MqttException) {
                 e.printStackTrace()
-                // 发送失败也要清空挂起 rid，否则会卡死后续查询（与 onQueryTimeout 同理）
-                queryPendingRid = null
+                // 发布失败：不清空 queryPendingRid（交由已排的超时兜底重试），否则会静默卡死。
                 Log.d(TAG, "sendQuery 发布失败: ${e.message}")
                 runOnUiThread { toastOnce("query_send_fail", "查询发送失败：${e.message}") }
             }
@@ -674,16 +811,24 @@ class DeviceControlActivity : AppCompatActivity() {
         if (queryRetryCount < QUERY_MAX_RETRIES) {
             queryRetryCount++
             // 重试前必须清空上一次挂起的 rid，否则 sendQuery 内的并发守护会直接 return，
-            // 导致后续所有查询（含本重试、周期刷新、手动刷新）永久失效、快照再也回不来。
+            // 导致后续所有查询（含本重试、手动/推送刷新）永久失效、快照再也回不来。
             queryPendingRid = null
             // 重试过程不再弹 Toast，减少干扰；只在总览页显示等待提示
             overviewFragment.setSnapshotHint(SnapshotHint.WAITING)
             sendQuery()
         } else {
             queryPendingRid = null
+            // 仅「首次进入探活」窗口内的两次失败才判定为离线；其余（手动/推送刷新）失败仅提示。
+            val wasFirstEntry = firstEntryProbeActive
             queryRetryCount = 0
+            firstEntryProbeActive = false
             overviewFragment.setSnapshotHint(SnapshotHint.FAILED)
-            runOnUiThread { toastOnce("no_snapshot", "被控端未返回快照，请确认被控端在线且已配对") }
+            if (wasFirstEntry) {
+                Log.w(TAG, "首次探活两次失败 → 判定被控端离线")
+                markControlledOffline()
+            } else {
+                runOnUiThread { toastOnce("no_snapshot", "被控端未返回快照，请确认被控端在线且已配对") }
+            }
         }
     }
 
@@ -694,6 +839,8 @@ class DeviceControlActivity : AppCompatActivity() {
             if (packet.rid == queryPendingRid) {
                 queryPendingRid = null
                 queryRetryCount = 0
+                // 探活成功 → 退出首次探活窗口，后续查询超时只提示失败、不再判定离线
+                firstEntryProbeActive = false
                 mainHandler.removeCallbacks(queryTimeoutRunnable)
             }
             val ok = verifyResp(packet)
@@ -719,6 +866,8 @@ class DeviceControlActivity : AppCompatActivity() {
                 overviewFragment.setSnapshotHint(SnapshotHint.NONE)
                 overviewFragment.setStaleBanner(false)
                 if (rtt >= 0) overviewFragment.setConnQuality(rtt)
+                // 探活/快照拉取成功 = 被控端确实在线 → 点亮绿灯（不再依赖 broker 连接态）
+                setConnStatus("在线（已配对）", true)
                 refreshCurrentFragment()
             }
         } catch (e: Exception) {
@@ -740,9 +889,14 @@ class DeviceControlActivity : AppCompatActivity() {
             }
             val json = packet.v?.toStringValue() ?: return
             val delta = JsonParser.parseString(json).asJsonObject
-            val base = snapshotJson ?: JsonObject().also {
-                snapshotJson = it
-                sendQuery() // 无基线则先拉全量
+            // 无全量基线时，绝不能拿空 JsonObject 当 base 去合并：那样只会得到一个缺 device/runtime/
+            // settings 等根键的「残缺快照」，既会渲染出空白/错误界面，还会被 persistSnapshot 写进本地
+            // 缓存污染持久化数据。正确做法是只触发一次全量查询后返回，等 resp 回来再渲染。
+            val base = snapshotJson
+            if (base == null) {
+                Log.d(TAG, "onPush：本地无全量基线，先拉全量快照，本次增量丢弃")
+                runOnUiThread { sendQuery() }
+                return
             }
             delta.entrySet().forEach { (k, v) -> base.add(k, v) }
             val merged = base.toString()
@@ -751,6 +905,8 @@ class DeviceControlActivity : AppCompatActivity() {
             // messageArrived 跑在 Paho 后台线程，setSnapshotHint 直接碰 binding，必须回主线程
             runOnUiThread {
                 overviewFragment.setSnapshotHint(SnapshotHint.NONE)
+                // 被控端主动推送增量 = 确证在线 → 点亮绿灯
+                setConnStatus("在线（已配对）", true)
                 refreshCurrentFragment()
             }
         } catch (e: Exception) {
@@ -763,6 +919,47 @@ class DeviceControlActivity : AppCompatActivity() {
         if (session.isBlank()) return false
         val json = packet.v?.toStringValue() ?: return false
         val expected = MqttSigner.sign(session, device.deviceId, packet.ts, packet.rid, packet.f, "s", json, MqttPacket.CMD_PUSH)
+        return expected == packet.sign
+    }
+
+    /**
+     * 处理被控端一次性事件告警（dt/{id}/alert）：低电量分段告警 / 开始充电通知 / 电量充满通知。
+     * 验签后弹出 Toast，使控制端 App 打开且远程控制开启时也能即时感知设备告警。
+     */
+    private fun onAlert(payload: String) {
+        try {
+            val packet = gson.fromJson(payload, MqttPacket::class.java) ?: return
+            if (!verifyAlert(packet)) {
+                runOnUiThread { toastOnce("alert_sign_fail", "告警消息验签失败，已忽略") }
+                return
+            }
+            val json = packet.v?.toStringValue() ?: return
+            val obj = JsonParser.parseString(json).asJsonObject
+            val type = obj.get("type")?.asString ?: return
+            val battery = if (obj.has("battery")) obj.get("battery").asInt else -1
+            val msg = when (type) {
+                "low_battery" -> {
+                    val threshold = if (obj.has("threshold")) obj.get("threshold").asInt else -1
+                    val stage = if (obj.has("stage")) obj.get("stage").asInt else 1
+                    "🔋 低电量告警（第${stage}档）：被控端电量 ${battery}%" +
+                        if (threshold > 0) "，已低于阈值 ${threshold}%" else ""
+                }
+                "charging_resumed" -> "⚡ 被控端已开始充电（${battery}%），低电量告警已取消"
+                "battery_full" -> "🔋 被控端电量已充满（${battery}%），可拔除电源"
+                else -> "收到被控端告警：$type"
+            }
+            Log.d(TAG, "收到被控端告警 type=$type battery=$battery -> $msg")
+            runOnUiThread { Toast.makeText(this, msg, Toast.LENGTH_LONG).show() }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun verifyAlert(packet: MqttPacket): Boolean {
+        val session = device.sessionSecret
+        if (session.isBlank()) return false
+        val json = packet.v?.toStringValue() ?: return false
+        val expected = MqttSigner.sign(session, device.deviceId, packet.ts, packet.rid, packet.f, "s", json, Protocol.CMD_ALERT)
         return expected == packet.sign
     }
 
@@ -887,9 +1084,18 @@ val calendar = CalendarSnapshot(
         if (device.sessionSecret.isBlank()) {
             Toast.makeText(this, "尚未完成配对，无法下发指令", Toast.LENGTH_SHORT).show(); return
         }
+        // 断线时 mqttClient 为 null，mqttClient?.publish(...) 会「静默 no-op」——不抛异常、不进 catch、
+        // 不给任何提示，用户看着 Switch 已翻转以为改成功了，实际什么都没发出去，配额还照样计数。
+        // 必须像 sendAction 那样显式拦截，并回滚 UI 到快照真实值。
+        if (mqttClient?.isConnected != true) {
+            Toast.makeText(this, "MQTT 未连接，设置未下发", Toast.LENGTH_SHORT).show()
+            refreshCurrentFragment()
+            return
+        }
         lastCommandLabel = "修改设置"
         val ts = System.currentTimeMillis()
         val rid = UUID.randomUUID().toString()
+        rememberCommandLabel(rid, lastCommandLabel)
         val (type, vStr) = when (value) {
             is PacketValue.BooleanValue -> "b" to value.b.toString()
             is PacketValue.IntValue -> "i" to value.i.toString()
@@ -897,13 +1103,20 @@ val calendar = CalendarSnapshot(
         }
         val sign = MqttSigner.sign(device.sessionSecret, device.deviceId, ts, rid, field, type, vStr, "U")
         val packet = MqttPacket("U", field, value, rid, ts, sign)
-        try {
-            mqttClient?.publish("${MqttPacket.TOPIC_PREFIX}/${device.deviceId}/cmd",
-                MqttMessage(gson.toJson(packet).toByteArray()).apply { qos = 1 })
-            bumpQuota(1, 0)
-        } catch (e: MqttException) {
-            e.printStackTrace()
-            Toast.makeText(this, "指令发送失败", Toast.LENGTH_SHORT).show()
+        // 与 sendQuery 同理：QoS1 publish 会同步等待 PUBACK，放主线程会 ANR
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                mqttClient?.publish("${MqttPacket.TOPIC_PREFIX}/${device.deviceId}/cmd",
+                    MqttMessage(gson.toJson(packet).toByteArray()).apply { qos = 1 })
+                bumpQuota(1, 0) // 只有确实发出去才计配额，避免断线时虚增
+            } catch (e: MqttException) {
+                e.printStackTrace()
+                pendingCommandLabels.remove(rid)
+                runOnUiThread {
+                    Toast.makeText(this@DeviceControlActivity, "指令发送失败", Toast.LENGTH_SHORT).show()
+                    refreshCurrentFragment()
+                }
+            }
         }
     }
 
@@ -914,7 +1127,17 @@ val calendar = CalendarSnapshot(
         if (device.sessionSecret.isBlank()) {
             Toast.makeText(this, "尚未完成配对，无法下发指令", Toast.LENGTH_SHORT).show(); return
         }
-        lastCommandLabel = if (action == "add") "新增任务" else "删除任务"
+        // 同 sendUpdate：断线时 publish 会静默 no-op，用户以为任务已增删改，实际未下发
+        if (mqttClient?.isConnected != true) {
+            Toast.makeText(this, "MQTT 未连接，任务操作未下发", Toast.LENGTH_SHORT).show()
+            refreshCurrentFragment()
+            return
+        }
+        lastCommandLabel = when (action) {
+            "add" -> "新增任务"
+            "update" -> "修改任务"
+            else -> "删除任务"
+        }
         val obj = com.google.gson.JsonObject()
         obj.addProperty("action", action)
         obj.addProperty("time", time)
@@ -922,15 +1145,22 @@ val calendar = CalendarSnapshot(
         val json = obj.toString()
         val ts = System.currentTimeMillis()
         val rid = UUID.randomUUID().toString()
+        rememberCommandLabel(rid, lastCommandLabel)
         val sign = MqttSigner.sign(device.sessionSecret, device.deviceId, ts, rid, "task", "s", json, MqttPacket.CMD_TASK)
         val packet = MqttPacket(c = MqttPacket.CMD_TASK, f = "task", v = PacketValue.StringValue(json), rid = rid, ts = ts, sign = sign)
-        try {
-            mqttClient?.publish("${MqttPacket.TOPIC_PREFIX}/${device.deviceId}/cmd",
-                MqttMessage(gson.toJson(packet).toByteArray()).apply { qos = 1 })
-            bumpQuota(1, 0)
-        } catch (e: MqttException) {
-            e.printStackTrace()
-            Toast.makeText(this, "指令发送失败", Toast.LENGTH_SHORT).show()
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                mqttClient?.publish("${MqttPacket.TOPIC_PREFIX}/${device.deviceId}/cmd",
+                    MqttMessage(gson.toJson(packet).toByteArray()).apply { qos = 1 })
+                bumpQuota(1, 0)
+            } catch (e: MqttException) {
+                e.printStackTrace()
+                pendingCommandLabels.remove(rid)
+                runOnUiThread {
+                    Toast.makeText(this@DeviceControlActivity, "指令发送失败", Toast.LENGTH_SHORT).show()
+                    refreshCurrentFragment()
+                }
+            }
         }
     }
 
@@ -951,42 +1181,101 @@ val calendar = CalendarSnapshot(
         mainHandler.postDelayed(actionBusyResetRunnable, 10_000L)
         val ts = System.currentTimeMillis()
         val rid = UUID.randomUUID().toString()
+        val label = when (action) {
+            MqttPacket.ACTION_PUNCH -> "打卡"
+            MqttPacket.ACTION_START -> "执行任务"
+            MqttPacket.ACTION_STOP -> "终止任务"
+            MqttPacket.ACTION_ATTENDANCE -> "考勤记录"
+            MqttPacket.ACTION_SCREENSHOT -> "截屏"
+            else -> action
+        }
+        // 必须在 publish 之前登记：ACK 可能在 publish 返回前就到达
+        lastCommandLabel = label
+        rememberCommandLabel(rid, label)
+        pendingActionRid = rid
         val sign = MqttSigner.sign(device.sessionSecret, device.deviceId, ts, rid, action, "", "", MqttPacket.CMD_ACTION)
         val packet = MqttPacket(MqttPacket.CMD_ACTION, action, null, rid, ts, sign)
-        try {
-            mqttClient?.publish("${MqttPacket.TOPIC_PREFIX}/${device.deviceId}/cmd",
-                MqttMessage(gson.toJson(packet).toByteArray()).apply { qos = 1 })
-            bumpQuota(1, 0)
-            val label = when (action) {
-                MqttPacket.ACTION_PUNCH -> "打卡"
-                MqttPacket.ACTION_START -> "执行任务"
-                MqttPacket.ACTION_STOP -> "终止任务"
-                MqttPacket.ACTION_ATTENDANCE -> "考勤记录"
-                MqttPacket.ACTION_SCREENSHOT -> "截屏"
-                else -> action
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                mqttClient?.publish("${MqttPacket.TOPIC_PREFIX}/${device.deviceId}/cmd",
+                    MqttMessage(gson.toJson(packet).toByteArray()).apply { qos = 1 })
+                bumpQuota(1, 0)
+                // 注意：这里刻意不调 sendQuery()。
+                // 早前版本在此直接查询，反而制造了竞态：它会占用 sendQuery 的并发槽位
+                // (queryPendingRid)，使随后 ACK 里那次「真正有效」的刷新被并发守护吞掉；
+                // 且这次查询的快照是被控端收到 query 那一刻生成的，早于 startTask 落地 = 旧状态。
+                // 正确路径只有一条：被控端 START/STOP 本就会 publishPush(statuses/runtime/tasks)
+                // 主动推增量，控制端 onPush 按 delta 覆盖合并本地缓存并刷新 UI，不再额外查全量。
+                runOnUiThread {
+                    Toast.makeText(this@DeviceControlActivity, "已发送动作：$label", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: MqttException) {
+                e.printStackTrace()
+                pendingCommandLabels.remove(rid)
+                runOnUiThread {
+                    if (pendingActionRid == rid) pendingActionRid = null
+                    overviewFragment.setActionsBusy(false)
+                    mainHandler.removeCallbacks(actionBusyResetRunnable)
+                    Toast.makeText(this@DeviceControlActivity, "动作指令发送失败", Toast.LENGTH_SHORT).show()
+                }
             }
-            lastCommandLabel = label
-            Toast.makeText(this, "已发送动作：$label", Toast.LENGTH_SHORT).show()
-        } catch (e: MqttException) {
-            e.printStackTrace()
-            Toast.makeText(this, "动作指令发送失败", Toast.LENGTH_SHORT).show()
         }
     }
 
-    // ===================== 周期刷新 =====================
-    private fun doPeriodicRefresh() {
-        // 事件驱动 + 增量推送：
-        // 1. 尚未拿到过任何快照（无基线）时，周期拉全量做引导；
-        // 2. 若增量推送主题被 broker ACL 拒绝，则回退到原来的每 15s 轮询全量，保证界面仍会自动刷新；
-        // 3. 正常场景（pushAvailable=true 且已有基线）停止轮询，仅由 dt/{id}/push 增量刷新，避免一直交互全量数据。
-        if (remoteEnabled && mqttClient?.isConnected == true && (currentSnapshot == null || !pushAvailable)) {
-            sendQuery()
-        }
-        mainHandler.postDelayed(refreshRunnable, REFRESH_MS)
+    // ===================== 首次进入探活（快照拉取 + 离线判定） =====================
+    /**
+     * 控制端「首次进入设备详情页」且设备已配对时才主动拉一次快照：
+     * 以一条 snapshot 查询作为 2s 探活 —— 被控端在 2s 内回响应即证明在线，同时带回快照；
+     * 超时则重试一次；两次都失败 → 判定离线（色灯变红 + 提示重新连接）。
+     * 整个 Activity 生命周期只主动拉这一次全量；其余刷新只来自手动刷新 / 被控端推送。
+     */
+    private fun startFirstEntryProbe() {
+        if (!remoteEnabled || device.sessionSecret.isBlank() || !device.bound) return
+        if (firstEntryProbeStarted) return // 整个生命周期只主动拉一次
+        firstEntryProbeStarted = true
+        firstEntryProbeActive = true
+        queryRetryCount = 0
+        Log.d(TAG, "首次进入：发起 5s 探活 + 快照拉取（deviceId=${device.deviceId}）")
+        // 只有本次真正发出探活才置「探活中」(琥珀)。connectComplete 与 connect() 返回分支
+        // 都会调到这，若在上层无条件置琥珀，后到者会把已确认成功的绿灯覆盖成黄、且此处因
+        // firstEntryProbeStarted=true 直接 return 不再发探活 → 色灯卡黄。集中在探活真正发起点设置。
+        runOnUiThread { setConnStatus("探活中…", false) }
+        sendQuery()
     }
-    private fun startRefresh() {
-        mainHandler.removeCallbacks(refreshRunnable)
-        mainHandler.postDelayed(refreshRunnable, REFRESH_MS)
+
+    /**
+     * 判定被控端离线后的处理（首次探活两次失败触发）：
+     * 1) 状态切到「设备离线（无响应）」 — 色灯变红；
+     * 2) 禁用快捷动作按钮（避免给一台失联的设备继续下指令）；
+     * 3) 弹 Snackbar 提示用户该设备可能已关机/网络断开 → 点击重试 / 重新连接。
+     */
+    private fun markControlledOffline() {
+        if (recentlyMarkedOffline) return
+        recentlyMarkedOffline = true
+        runOnUiThread {
+            setConnStatus("设备离线（无响应）", false, "被控端未响应，可能已经离线。")
+            overviewFragment.setActionsEnabled(false)
+            Snackbar.make(
+                binding.root,
+                "被控端无响应（疑似离线），请确认设备状态后重新连接",
+                Snackbar.LENGTH_LONG
+            ).setAction("重新连接") {
+                overviewFragment.setRefreshing(false)
+                retryConnection()
+            }.show()
+        }
+    }
+
+    /** 被控端复活：从误判的离线态恢复（收到被控端任意消息时由 handleIncoming 触发） */
+    private fun recoverFromFalseOffline() {
+        if (!recentlyMarkedOffline) return
+        recentlyMarkedOffline = false
+        runOnUiThread {
+            setConnStatus("已连接（已配对）", true)
+            overviewFragment.setActionsEnabled(true)
+            overviewFragment.setStaleBanner(false)
+            toastOnce("recover_offline", "被控端恢复响应")
+        }
     }
 
     // ===================== 解绑 =====================
@@ -1020,33 +1309,15 @@ val calendar = CalendarSnapshot(
         }
     }
 
-    // ===================== 删除设备（解绑后） =====================
-    private fun confirmDelete() {
-        AlertDialog.Builder(this)
-            .setTitle("删除设备")
-            .setMessage("确定删除该设备记录？删除后可重新扫码配对。")
-            .setPositiveButton("删除") { _, _ -> deleteDevice() }
-            .setNegativeButton("取消", null).show()
-    }
-
-    private fun deleteDevice() {
-        lifecycleScope.launch(Dispatchers.IO) {
-            db.deviceDao().deleteById(device.deviceId)
-            withContext(Dispatchers.Main) {
-                Toast.makeText(this@DeviceControlActivity, "设备已删除", Toast.LENGTH_SHORT).show()
-                finish()
-            }
-        }
-    }
-
+    // ===================== 连接状态 =====================
     fun setConnStatus(text: String, online: Boolean) {
         setConnStatus(text, online, null)
     }
 
     fun setConnStatus(text: String, online: Boolean, bannerText: String?) {
         overviewFragment.setConnStatusText(text, online)
-        // B4：离线横幅（连接中过渡态不显示）+ 断连禁用控制按钮
-        val showBanner = remoteEnabled && !online && !text.contains("连接中")
+        // B4：离线横幅（连接中/探活中过渡态不显示）+ 断连禁用控制按钮
+        val showBanner = remoteEnabled && !online && !text.contains("连接中") && !text.contains("探活中")
         binding.offlineBanner.visibility = if (showBanner) View.VISIBLE else View.GONE
         if (bannerText != null) {
             binding.tvOfflineBanner.text = bannerText
@@ -1111,10 +1382,9 @@ val calendar = CalendarSnapshot(
                 overviewFragment.setSnapshotHint(SnapshotHint.DISABLED)
             }
         }
-        // 解绑态：确保控件保持禁用 + 底部按钮为「删除设备」（避免 onResume 误恢复）
+        // 解绑态：确保控件保持禁用（避免 onResume 误恢复）
         if (!device.bound) {
             overviewFragment.setControlsEnabled(false)
-            overviewFragment.setUnbindToDelete()
             setConnStatus(
                 if (forceUnbound) "已被强制解绑" else "已解绑",
                 false,
@@ -1144,7 +1414,6 @@ val calendar = CalendarSnapshot(
     override fun onDestroy() {
         super.onDestroy()
         mainHandler.removeCallbacks(PAIR_TIMEOUT_RUNNABLE)
-        mainHandler.removeCallbacks(refreshRunnable)
         mainHandler.removeCallbacks(queryTimeoutRunnable)
         try { mqttClient?.disconnect(); mqttClient?.close() } catch (_: Exception) {}
     }

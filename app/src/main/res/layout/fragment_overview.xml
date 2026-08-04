@@ -98,6 +98,20 @@
                     app:layout_constraintEnd_toEndOf="parent"
                     app:layout_constraintTop_toTopOf="@id/tvDeviceName" />
 
+                <!-- 状态灯高光：白色径向光泽叠在 dotStatus 左上角，使其从扁平圆点变为球面质感 -->
+                <View
+                    android:id="@+id/dotGloss"
+                    android:layout_width="8dp"
+                    android:layout_height="8dp"
+                    android:layout_marginStart="1.5dp"
+                    android:layout_marginTop="1.5dp"
+                    android:alpha="0.9"
+                    android:background="@drawable/bg_dot_gloss"
+                    android:clickable="false"
+                    android:focusable="false"
+                    app:layout_constraintStart_toStartOf="@id/dotStatus"
+                    app:layout_constraintTop_toTopOf="@id/dotStatus" />
+
             </androidx.constraintlayout.widget.ConstraintLayout>
             </com.google.android.material.card.MaterialCardView>
 
@@ -839,16 +853,6 @@
                 style="@style/SectionBody"
                 android:orientation="vertical" />
         </com.google.android.material.card.MaterialCardView>
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnUnbind"
-            style="@style/Widget.Material3.Button"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:text="解绑设备"
-            android:textColor="@color/md_onError"
-            app:backgroundTint="@color/md_error" />
 
     </LinearLayout>
 

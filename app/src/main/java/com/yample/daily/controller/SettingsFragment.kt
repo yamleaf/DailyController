@@ -29,6 +29,9 @@ class SettingsFragment : Fragment(), SnapshotFragment {
     /** 需求 1：消息渠道枚举（mc：0-邮件，1-企业微信） */
     var onChannelChange: ((Int) -> Unit)? = null
 
+    /** 解绑设备：入口由概览页移至设置页 */
+    var onUnbind: (() -> Unit)? = null
+
     companion object {
         /** 由「消息渠道」卡片单独承载的字段，不在通用设置列表里重复渲染 */
         private val MSG_KEYS = setOf("mc", "mt", "em", "ei", "wk", "ea")
@@ -48,6 +51,7 @@ class SettingsFragment : Fragment(), SnapshotFragment {
         binding.rvSettings.layoutManager = LinearLayoutManager(requireContext())
         binding.rvSettings.adapter = settingAdapter
         binding.btnEditMsgChannel.setOnClickListener { showMsgChannelDialog() }
+        binding.btnUnbindDevice.setOnClickListener { onUnbind?.invoke() }
         snapshot?.let { render(it) }
     }
 
@@ -225,6 +229,7 @@ class SettingsFragment : Fragment(), SnapshotFragment {
         "ot" -> "秒"
         "tr" -> "分"
         "rh" -> "时"
+        "lb" -> "%"
         else -> ""
     }
 
