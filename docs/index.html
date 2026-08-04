@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DailyController 下载中心</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+           max-width: 720px; margin: 0 auto; padding: 40px 20px; color: #1B1B23; background: #FBF8FF; }
+    h1 { font-size: 26px; margin: 0 0 8px; }
+    .sub { color: #46464F; font-size: 14px; line-height: 1.6; margin: 0 0 24px; }
+    .card { background: #fff; border: 1px solid #E6E1F2; border-radius: 16px; padding: 22px; margin: 16px 0;
+            box-shadow: 0 6px 24px rgba(91,91,214,0.08); }
+    .card h3 { margin: 0 0 12px; font-size: 16px; }
+    a.btn { display: block; text-decoration: none; color: #fff; background: #5B5BD6; border-radius: 12px;
+            padding: 14px 18px; margin: 10px 0; font-weight: 600; text-align: center; transition: transform .15s ease; }
+    a.btn:hover { transform: translateY(-2px); }
+    a.mirror { background: #46464F; }
+    a.repo { background: transparent; color: #5B5BD6; border: 1px solid #5B5BD6; }
+    code { background: #EFEDFB; padding: 2px 6px; border-radius: 6px; font-size: 13px; }
+    .meta { color: #46464F; font-size: 13px; line-height: 1.6; }
+    footer { margin-top: 28px; color: #767680; font-size: 12px; text-align: center; }
+  </style>
+</head>
+<body>
+  <h1>DailyController 下载中心</h1>
+  <p class="sub">本页是控制端 DailyController 的匿名下载入口，<b>地址恒定、无需登录</b>。
+     请优先使用「下载中心 / GitHub Releases」获取最新版；直连 GitHub 受阻时再用加速镜像兜底。</p>
+
+  <div class="card">
+    <h3>方式一：GitHub Releases（官方最新版 · 推荐）</h3>
+    <a class="btn" href="https://github.com/yamleaf/DailyController/releases/latest">前往下载最新版</a>
+    <p class="meta">始终指向最新构建的 <code>dailyController_ci-xxxxxxx_debug.apk</code> 与
+       <code>dailyController_ci-xxxxxxx_release.apk</code>，地址无需随版本变化。</p>
+  </div>
+
+  <div class="card">
+    <h3>方式二：加速镜像（ghproxy 兜底）</h3>
+    <a class="btn mirror" href="https://ghproxy.net/https://github.com/yamleaf/DailyController/releases/latest">镜像加速下载</a>
+    <p class="meta">当直连 GitHub 超时或失败时，用此镜像代理拉取同样的 latest 资源。</p>
+  </div>
+
+  <div class="card">
+    <h3>源码与文档</h3>
+    <a class="btn repo" href="https://github.com/yamleaf/DailyController">打开 GitHub 仓库</a>
+  </div>
+
+  <footer>DailyController · 远程控制打卡设备 · 本页由项目仓库静态托管（GitHub Pages）</footer>
+</body>
+</html>

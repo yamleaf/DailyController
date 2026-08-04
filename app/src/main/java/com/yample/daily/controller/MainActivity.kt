@@ -5,6 +5,7 @@ import android.content.Intent
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.widget.Toast
@@ -36,6 +37,11 @@ import org.eclipse.paho.client.mqttv3.IMqttDeliveryToken
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence
 import java.util.UUID
 import java.util.concurrent.TimeUnit
+import android.content.ClipData
+import android.view.Gravity
+import android.widget.LinearLayout
+import android.widget.TextView
+import com.yample.daily.controller.BuildConfig
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
@@ -58,6 +64,13 @@ class MainActivity : AppCompatActivity() {
         attachSwipeToDelete()
 
         binding.fabAdd.setOnClickListener { showAddChooser() }
+        binding.toolbarMain.inflateMenu(R.menu.menu_main)
+        binding.toolbarMain.setOnMenuItemClickListener { item ->
+            if (item.itemId == R.id.action_version) {
+                showVersionInfo()
+                true
+            } else false
+        }
         binding.btnEmptyScan.setOnClickListener { startScan() }
         loadDevices()
     }
@@ -105,6 +118,64 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Toast.makeText(this, "剪贴板内容不是有效的配对信息", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    /** 版本信息：点击右上角菜单「版本信息」弹出，列出构建元数据，支持一键复制 */
+    private fun showVersionInfo() {
+        val appInfo = packageManager.getApplicationInfo(packageName, 0)
+        val targetSdk = appInfo.targetSdkVersion
+        val minSdk = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) appInfo.minSdkVersion else 0
+
+        val rows = linkedMapOf(
+            "版本号" to BuildConfig.VERSION_NAME,
+            "Version Code" to BuildConfig.VERSION_CODE.toString(),
+            "构建来源" to BuildConfig.BUILD_SOURCE,
+            "Git 提交" to BuildConfig.GIT_SHA,
+            "构建时间" to BuildConfig.BUILD_TIME,
+            "基线版本" to BuildConfig.BASELINE_VERSION,
+            "包名" to BuildConfig.APPLICATION_ID,
+            "Target SDK" to targetSdk.toString(),
+            "Min SDK" to minSdk.toString()
+        )
+
+        val sb = StringBuilder()
+        rows.forEach { (k, v) -> sb.append("$k：$v\n") }
+
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(40, 24, 40, 8)
+        }
+        rows.forEach { (k, v) ->
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, 8, 0, 8)
+            }
+            row.addView(TextView(this).apply {
+                text = k
+                textSize = 13f
+                setTextColor(resources.getColor(R.color.md_onSurfaceVariant, theme))
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 0.4f)
+            })
+            row.addView(TextView(this).apply {
+                text = v
+                textSize = 13f
+                setTextColor(resources.getColor(R.color.md_onSurface, theme))
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            })
+            container.addView(row)
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("版本信息")
+            .setView(container)
+            .setPositiveButton("复制全部") { _, _ ->
+                val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+                cm.setPrimaryClip(ClipData.newPlainText("版本信息", sb.toString().trimEnd()))
+                Toast.makeText(this, "已复制全部版本信息到剪贴板", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("关闭", null)
+            .show()
     }
 
     private fun startScan() {

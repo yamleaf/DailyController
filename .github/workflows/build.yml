@@ -14,6 +14,19 @@ jobs:
     permissions:
       contents: write
 
+    env:
+      # 被控端下载地址：单一匿名公共地址（下载中心，GitHub Pages 静态页，恒定地址）。
+      # 取消 GitHub Releases / 镜像直链，统一只走此匿名入口。
+      CTRL_DOWNLOAD_URL: "https://yamleaf.github.io/DailyController/"
+      # 版本号/产物命名（对齐被控端）：alpha 自动版本 + git 短哈希 + 构建来源，
+      # 产出 dailyController_v1.0.0-alpha-<sha7>-ci_<buildType>.apk，每次构建 versionCode 唯一。
+      # 正式发版时把 BUILD_FLAVOR 改为 release，即产出 dailyController_v1.0.0_<buildType>.apk
+      BUILD_FLAVOR: alpha
+      GIT_COMMIT_SHORT: ${{ github.sha }}
+      # 构建来源标识：CI 产物版本号带 -ci 后缀，本机手工编译带 -local，便于一眼区分包的出处。
+      # GITHUB_ACTIONS 环境变量本可自动识别，此处显式声明以防迁移到其他 CI 时失效。
+      BUILD_SOURCE: ci
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -34,6 +47,12 @@ jobs:
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
+
+      - name: Show generated version info
+        run: |
+          echo "BUILD_FLAVOR=$BUILD_FLAVOR"
+          echo "GIT_COMMIT_SHORT=$GIT_COMMIT_SHORT"
+          echo "BUILD_SOURCE=$BUILD_SOURCE"
 
       - name: Build debug APK
         run: ./gradlew assembleDebug --no-daemon
