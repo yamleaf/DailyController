@@ -44,11 +44,11 @@
             android:layout_height="48dp"
             android:background="@drawable/bg_circle_primary"
             android:padding="12dp">
-            <ImageView
+            <ImageView 
                 android:layout_width="24dp"
                 android:layout_height="24dp"
                 android:src="@drawable/ic_scan"
-                app:tint="@color/md_onPrimary" />
+                app:tint="@color/md_onPrimary" android:contentDescription="@null" />
         </FrameLayout>
 
         <LinearLayout
@@ -73,12 +73,12 @@
                 android:textColor="@color/md_onSurfaceVariant" />
         </LinearLayout>
 
-        <ImageView
+        <ImageView 
             android:layout_width="20dp"
             android:layout_height="20dp"
             android:layout_marginEnd="4dp"
             android:src="@drawable/ic_chevron_right"
-            app:tint="@color/md_onSurfaceVariant" />
+            app:tint="@color/md_onSurfaceVariant" android:contentDescription="@null" />
     </LinearLayout>
 
     <View
@@ -107,11 +107,11 @@
             android:layout_height="48dp"
             android:background="@drawable/bg_circle_secondary"
             android:padding="12dp">
-            <ImageView
+            <ImageView 
                 android:layout_width="24dp"
                 android:layout_height="24dp"
                 android:src="@drawable/ic_clipboard"
-                app:tint="@color/md_onSecondary" />
+                app:tint="@color/md_onSecondary" android:contentDescription="@null" />
         </FrameLayout>
 
         <LinearLayout
@@ -136,12 +136,12 @@
                 android:textColor="@color/md_onSurfaceVariant" />
         </LinearLayout>
 
-        <ImageView
+        <ImageView 
             android:layout_width="20dp"
             android:layout_height="20dp"
             android:layout_marginEnd="4dp"
             android:src="@drawable/ic_chevron_right"
-            app:tint="@color/md_onSurfaceVariant" />
+            app:tint="@color/md_onSurfaceVariant" android:contentDescription="@null" />
     </LinearLayout>
 
     <TextView

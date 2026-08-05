@@ -27,7 +27,7 @@
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent" />
 
-        <ImageView
+        <ImageView 
             android:id="@+id/imgDeviceIcon"
             android:layout_width="52dp"
             android:layout_height="52dp"
@@ -37,7 +37,7 @@
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintStart_toEndOf="@id/accentBar"
             app:layout_constraintTop_toTopOf="parent"
-            app:tint="@color/md_onPrimaryContainer" />
+            app:tint="@color/md_onPrimaryContainer" android:contentDescription="@null" />
 
         <TextView
             android:id="@+id/tvDeviceName"
@@ -86,7 +86,7 @@
             app:layout_constraintStart_toStartOf="@id/dotOnline"
             app:layout_constraintTop_toTopOf="@id/dotOnline" />
 
-        <ImageView
+        <ImageView 
             android:id="@+id/imgChevron"
             android:layout_width="18dp"
             android:layout_height="18dp"
@@ -95,7 +95,7 @@
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintTop_toTopOf="parent"
-            app:tint="@color/md_outline" />
+            app:tint="@color/md_outline" android:contentDescription="@null" />
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 

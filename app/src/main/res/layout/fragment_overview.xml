@@ -34,7 +34,7 @@
                 android:layout_height="wrap_content"
                 android:padding="18dp">
 
-                <ImageView
+                <ImageView 
                     android:id="@+id/imgDeviceIcon"
                     android:layout_width="58dp"
                     android:layout_height="58dp"
@@ -43,7 +43,7 @@
                     android:src="@drawable/ic_device"
                     app:layout_constraintStart_toStartOf="parent"
                     app:layout_constraintTop_toTopOf="parent"
-                    app:tint="@color/md_onPrimaryContainer" />
+                    app:tint="@color/md_onPrimaryContainer" android:contentDescription="@null" />
 
                 <TextView
                     android:id="@+id/tvDeviceName"
@@ -148,7 +148,7 @@
                             android:layout_width="9dp"
                             android:layout_height="9dp"
                             android:background="@drawable/bg_dot_offline"
-                            android:backgroundTint="#16A34A" />
+                            android:backgroundTint="@color/online" />
 
                         <TextView
                             android:layout_width="wrap_content"
@@ -170,7 +170,7 @@
                             android:layout_width="9dp"
                             android:layout_height="9dp"
                             android:background="@drawable/bg_dot_offline"
-                            android:backgroundTint="#F59E0B" />
+                            android:backgroundTint="@color/md_warning" />
 
                         <TextView
                             android:layout_width="wrap_content"
@@ -192,7 +192,7 @@
                             android:layout_width="9dp"
                             android:layout_height="9dp"
                             android:background="@drawable/bg_dot_offline"
-                            android:backgroundTint="#9CA3AF" />
+                            android:backgroundTint="@color/offline" />
 
                         <TextView
                             android:layout_width="wrap_content"
@@ -214,7 +214,7 @@
                             android:layout_width="9dp"
                             android:layout_height="9dp"
                             android:background="@drawable/bg_dot_offline"
-                            android:backgroundTint="#DC2626" />
+                            android:backgroundTint="@color/md_error" />
 
                         <TextView
                             android:layout_width="wrap_content"
@@ -278,13 +278,13 @@
                     android:gravity="center_vertical"
                     android:orientation="horizontal">
 
-                    <ImageView
+                    <ImageView 
                         android:layout_width="42dp"
                         android:layout_height="42dp"
                         android:background="@drawable/bg_circle_primary"
                         android:padding="10dp"
                         android:src="@drawable/ic_power"
-                        app:tint="@color/md_onPrimaryContainer" />
+                        app:tint="@color/md_onPrimaryContainer" android:contentDescription="@null" />
 
                     <LinearLayout
                         android:layout_width="0dp"
@@ -478,13 +478,13 @@
                     android:gravity="center_vertical"
                     android:orientation="horizontal">
 
-                    <ImageView
+                    <ImageView 
                         android:layout_width="42dp"
                         android:layout_height="42dp"
                         android:background="@drawable/bg_circle_secondary"
                         android:padding="10dp"
                         android:src="@drawable/ic_power_save"
-                        app:tint="@color/md_onSecondaryContainer" />
+                        app:tint="@color/md_onSecondaryContainer" android:contentDescription="@null" />
 
                     <LinearLayout
                         android:layout_width="0dp"
@@ -721,12 +721,12 @@
                         android:textColor="@color/md_onSurfaceVariant"
                         android:textSize="13sp" />
 
-                    <ImageView
+                    <ImageView 
                         android:id="@+id/ivChevronConn"
                         android:layout_width="20dp"
                         android:layout_height="20dp"
                         android:src="@drawable/ic_chevron_right"
-                        app:tint="@color/md_outline" />
+                        app:tint="@color/md_outline" android:contentDescription="@null" />
                 </LinearLayout>
 
                 <LinearLayout
@@ -816,13 +816,13 @@
                         android:textSize="15sp"
                         android:textStyle="bold" />
 
-                    <ImageView
+                    <ImageView 
                         android:id="@+id/ivChevronDevice"
                         android:layout_width="20dp"
                         android:layout_height="20dp"
                         android:rotation="90"
                         android:src="@drawable/ic_chevron_right"
-                        app:tint="@color/md_outline" />
+                        app:tint="@color/md_outline" android:contentDescription="@null" />
                 </LinearLayout>
 
                 <LinearLayout

@@ -1,32 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="md_primary">#C2C2FF</color>
-    <color name="md_onPrimary">#2C2B6E</color>
-    <color name="md_primaryContainer">#3D3D9E</color>
-    <color name="md_onPrimaryContainer">#E1E1FF</color>
-    <color name="md_secondary">#C6C3E4</color>
-    <color name="md_onSecondary">#33324B</color>
-    <color name="md_secondaryContainer">#4B4A66</color>
-    <color name="md_onSecondaryContainer">#E2E1F9</color>
-    <color name="md_tertiary">#5BD6A4</color>
-    <color name="md_onTertiary">#003826</color>
-    <color name="md_tertiaryContainer">#0E5240</color>
-    <color name="md_onTertiaryContainer">#8AF5C8</color>
-    <color name="md_error">#FFB4AB</color>
-    <color name="md_onError">#690005</color>
-    <color name="md_surface">#13131C</color>
-    <color name="md_onSurface">#E4E2E9</color>
-    <color name="md_surfaceVariant">#46464F</color>
-    <color name="md_onSurfaceVariant">#C7C5D0</color>
-    <color name="md_outline">#9090A0</color>
-    <color name="md_outlineVariant">#46464F</color>
-    <color name="md_background">#101018</color>
-    <color name="md_onBackground">#E4E2E9</color>
-
-    <color name="header_start">#4C4CC0</color>
-    <color name="header_end">#6A3FD8</color>
-    <color name="on_header">#FFFFFF</color>
-
-    <color name="online">#2E9E63</color>
-    <color name="offline">#8A8A99</color>
+    <!-- md_* 深色值已统一收敛到 :protocol 库的 values-night/tokens.xml。 -->
 </resources>

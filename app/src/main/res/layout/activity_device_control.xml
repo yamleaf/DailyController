@@ -40,11 +40,11 @@
                 android:gravity="center_vertical"
                 android:padding="12dp">
 
-                <ImageView
+                <ImageView 
                     android:layout_width="20dp"
                     android:layout_height="20dp"
                     android:src="@drawable/ic_warning"
-                    app:tint="@color/md_warning" />
+                    app:tint="@color/md_warning" android:contentDescription="@null" />
 
                 <TextView
                     android:id="@+id/tvOfflineBanner"
