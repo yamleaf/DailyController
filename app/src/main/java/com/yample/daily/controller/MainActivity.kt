@@ -64,6 +64,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // targetSdk 36 在 Android 15+ 强制 edge-to-edge：退出，让顶栏（toolbar 时钟）位于状态栏下方，避免与状态栏时间重叠
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, true)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 

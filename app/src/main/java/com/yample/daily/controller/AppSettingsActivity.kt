@@ -29,6 +29,8 @@ class AppSettingsActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // targetSdk 36 在 Android 15+ 强制 edge-to-edge：退出，避免 toolbar 标题与状态栏重叠
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, true)
         binding = ActivityAppSettingsBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
