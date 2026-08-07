@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -315,13 +316,25 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun addGroupChip(label: String, value: String) {
+        val isSelected = (selectedGroup == value)
+        val ctx = this
         val chip = com.google.android.material.chip.Chip(this).apply {
             text = label
-            isCheckable = true
-            isChecked = (selectedGroup == value)
+            isCheckable = false
+            // 选中态：品牌色填充+白字；未选中态：surfaceVariant填充+onSurfaceVariant字
+            chipBackgroundColor = android.content.res.ColorStateList.valueOf(
+                if (isSelected) ContextCompat.getColor(ctx, R.color.md_primary)
+                else ContextCompat.getColor(ctx, R.color.md_surfaceVariant)
+            )
+            setTextColor(android.content.res.ColorStateList.valueOf(
+                if (isSelected) ContextCompat.getColor(ctx, R.color.md_onPrimary)
+                else ContextCompat.getColor(ctx, R.color.md_onSurfaceVariant)
+            ))
             setOnClickListener {
-                selectedGroup = value
-                applyFilters()
+                if (!isSelected) {
+                    selectedGroup = value
+                    applyFilters()
+                }
             }
             // 长按真实分组 → 重命名 / 删除分组（「全部」除外）
             if (value.isNotEmpty()) {
