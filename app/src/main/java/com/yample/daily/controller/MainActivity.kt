@@ -20,6 +20,7 @@ import com.yample.mqttprotocol.MqttPacket
 import com.yample.mqttprotocol.MqttSigner
 import com.yample.mqttprotocol.PacketValue
 import com.yample.mqttprotocol.Protocol
+import com.yample.mqttprotocol.dialog.UnifiedDialogKit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -333,16 +334,16 @@ class MainActivity : AppCompatActivity() {
 
     /** 分组管理：重命名 / 删除（删除后组内设备回到未分组） */
     private fun showGroupManageDialog(group: String) {
-        com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
-            .setTitle("分组「$group」")
-            .setItems(arrayOf("重命名分组", "删除分组")) { _, which ->
-                when (which) {
-                    0 -> renameGroup(group)
-                    1 -> deleteGroup(group)
-                }
+        UnifiedDialogKit.showMenu(
+            ctx = this,
+            title = "分组「$group」",
+            items = listOf("重命名分组", "删除分组")
+        ) { which ->
+            when (which) {
+                0 -> renameGroup(group)
+                1 -> deleteGroup(group)
             }
-            .setNegativeButton("取消", null)
-            .show()
+        }
     }
 
     private fun renameGroup(group: String) {
@@ -507,26 +508,29 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** 编辑设备：弹输入框预填当前名称/分组，保存后刷新列表（Room @Update） */
+    /** 编辑设备：弹输入框预填当前名称/分组，保存后刷新列表（Room @Update），统一底部双按钮等宽均分 */
     private fun renameDevice(device: DeviceRecord) {
         val dlgBinding = com.yample.daily.controller.databinding.DialogRenameBinding.inflate(layoutInflater)
         dlgBinding.etName.setText(device.name)
         dlgBinding.etName.setSelection(device.name.length)
         dlgBinding.etGroup.setText(device.group)
-        com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
-            .setTitle("编辑设备")
-            .setMessage("为「${device.deviceId}」设置备注名称与分组")
-            .setView(dlgBinding.root)
-            .setPositiveButton("保存") { _, _ ->
+        UnifiedDialogKit.showForm(
+            ctx = this,
+            contentView = dlgBinding.root,
+            title = "编辑设备",
+            message = "为「${device.deviceId}」设置备注名称与分组",
+            positiveText = "保存",
+            negativeText = "取消",
+            onConfirm = {
                 val newName = dlgBinding.etName.text.toString().trim().ifBlank { device.name }
                 val newGroup = dlgBinding.etGroup.text.toString().trim()
                 lifecycleScope.launch(Dispatchers.IO) {
                     db.deviceDao().update(device.copy(name = newName, group = newGroup))
                     withContext(Dispatchers.Main) { loadDevices() }
                 }
+                true
             }
-            .setNegativeButton("取消", null)
-            .show()
+        )
     }
 
     /** 置顶 / 取消置顶：翻转 pinned 标记并刷新列表（Room @Update + 列表按 pinned 排序） */

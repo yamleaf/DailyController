@@ -13,9 +13,9 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.yample.daily.controller.databinding.ActivityAppSettingsBinding
 import com.yample.mqttprotocol.ThemeManager
+import com.yample.mqttprotocol.dialog.UnifiedDialogKit
 
 /**
  * 控制端 app 级设置页：主题外观 / 离线通知 / 版本信息等。
@@ -97,17 +97,17 @@ class AppSettingsActivity : AppCompatActivity() {
     /** 主题外观：深色 / 浅色 / 跟随系统（与被控端共用 :protocol 的 ThemeManager） */
     private fun showThemeChooser() {
         val current = ThemeManager.getMode(this)
-        MaterialAlertDialogBuilder(this)
-            .setTitle("主题外观")
-            .setSingleChoiceItems(ThemeManager.LABELS, current) { dialog, which ->
-                dialog.dismiss()
-                if (which != current) {
-                    ThemeManager.setMode(this, which)
-                    recreate()
-                }
+        UnifiedDialogKit.showSingleChoice(
+            ctx = this,
+            title = "主题外观",
+            items = ThemeManager.LABELS.toList(),
+            selectedIndex = current
+        ) { which ->
+            if (which != current) {
+                ThemeManager.setMode(this, which)
+                recreate()
             }
-            .setNegativeButton("取消", null)
-            .show()
+        }
     }
 
     /** 版本信息：列出构建元数据，支持一键复制 */
@@ -156,15 +156,19 @@ class AppSettingsActivity : AppCompatActivity() {
             container.addView(row)
         }
 
-        MaterialAlertDialogBuilder(this)
-            .setTitle("版本信息")
-            .setView(container)
-            .setPositiveButton("复制全部") { _, _ ->
+        UnifiedDialogKit.showForm(
+            ctx = this,
+            contentView = container,
+            title = "版本信息",
+            message = "轻触「复制全部」一键复制以上信息",
+            positiveText = "复制全部",
+            negativeText = "关闭",
+            onConfirm = {
                 val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
                 cm.setPrimaryClip(ClipData.newPlainText("版本信息", sb.toString().trimEnd()))
                 Toast.makeText(this, "已复制全部版本信息到剪贴板", Toast.LENGTH_SHORT).show()
+                true
             }
-            .setNegativeButton("关闭", null)
-            .show()
+        )
     }
 }

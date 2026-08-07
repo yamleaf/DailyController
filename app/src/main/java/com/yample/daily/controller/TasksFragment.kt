@@ -6,11 +6,11 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.LinearLayoutManager
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.timepicker.MaterialTimePicker
 import com.google.android.material.timepicker.TimeFormat
 import com.yample.daily.controller.databinding.DialogTaskBinding
 import com.yample.daily.controller.databinding.FragmentTasksBinding
+import com.yample.mqttprotocol.dialog.UnifiedDialogKit
 
 class TasksFragment : Fragment(), SnapshotFragment {
 

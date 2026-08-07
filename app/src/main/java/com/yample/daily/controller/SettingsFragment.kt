@@ -6,11 +6,11 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.LinearLayoutManager
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.yample.daily.controller.databinding.DialogMsgChannelBinding
 import com.yample.daily.controller.databinding.DialogSliderBinding
 import com.yample.daily.controller.databinding.FragmentSettingsBinding
 import com.yample.daily.controller.databinding.RowInfoBinding
+import com.yample.mqttprotocol.dialog.UnifiedDialogKit
 
 class SettingsFragment : Fragment(), SnapshotFragment {
 
@@ -197,15 +197,18 @@ class SettingsFragment : Fragment(), SnapshotFragment {
                 refreshValue()
             }
         }
-        MaterialAlertDialogBuilder(requireContext())
-            .setTitle(item.label)
-            .setView(dlgBinding.root)
-            .setPositiveButton("保存") { _, _ ->
+        UnifiedDialogKit.showForm(
+            ctx = requireContext(),
+            contentView = dlgBinding.root,
+            title = item.label,
+            positiveText = "保存",
+            negativeText = "取消",
+            onConfirm = {
                 val v = item.value as? Int ?: min
                 onIntChange?.invoke(item, v)
+                true
             }
-            .setNegativeButton("取消", null)
-            .show()
+        )
     }
 
     private fun unitFor(key: String): String = when (key) {
