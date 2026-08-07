@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 设置页浅灰分组容器：包裹一组相关配置项，强化视觉分组 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="@color/md_surfaceVariant" />
+    <corners android:radius="@dimen/radius_card" />
+</shape>

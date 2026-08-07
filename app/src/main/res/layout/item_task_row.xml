@@ -54,7 +54,7 @@
         android:paddingVertical="4dp"
         android:text="待执行"
         android:textColor="@color/md_primary"
-        android:textSize="11sp"
+        android:textSize="13sp"
         android:textStyle="bold" />
 
     <TextView

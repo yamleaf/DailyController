@@ -7,7 +7,7 @@
     android:paddingStart="16dp"
     android:paddingEnd="16dp"
     android:paddingTop="12dp"
-    android:paddingBottom="16dp">
+    android:paddingBottom="100dp">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -110,6 +110,33 @@
                     <TextView style="@style/CalLegend" android:text="● 休息" android:textColor="@color/md_teal" />
                     <TextView style="@style/CalLegend" android:text="● 跳过" android:textColor="@color/md_skip" />
                 </LinearLayout>
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- 需求 6：最近打卡记录（由概览页迁移至日历页） -->
+        <com.google.android.material.card.MaterialCardView style="@style/SectionCard">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingHorizontal="16dp"
+                android:paddingVertical="12dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="最近打卡记录"
+                    android:textColor="@color/md_onSurface"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <LinearLayout
+                    android:id="@+id/layoutHistory"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:orientation="vertical" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 

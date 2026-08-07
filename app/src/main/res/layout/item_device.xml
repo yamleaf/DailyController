@@ -1,102 +1,197 @@
 <?xml version="1.0" encoding="utf-8"?>
-<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+<com.yample.daily.controller.widget.SwipeRevealLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/swipeRevealLayout"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:layout_marginHorizontal="16dp"
-    android:layout_marginVertical="7dp"
-    app:cardBackgroundColor="@color/md_surface"
-    app:cardCornerRadius="22dp"
-    app:cardElevation="2dp"
-    app:strokeColor="@color/md_outlineVariant"
-    app:strokeWidth="1dp">
+    android:layout_height="wrap_content">
 
-    <androidx.constraintlayout.widget.ConstraintLayout
+    <!-- 底部操作面板：左滑露出。QQ 聊天列表式：置顶(灰) / 编辑(主色) / 删除(红) 三个等宽色块撑满整行高度 -->
+    <LinearLayout
+        android:id="@+id/actionPanel"
+        android:layout_width="wrap_content"
+        android:layout_height="match_parent"
+        android:layout_gravity="end"
+        android:layout_marginEnd="@dimen/dp_16"
+        android:layout_marginVertical="6dp"
+        android:orientation="horizontal">
+
+        <!-- 置顶 / 取消置顶（左）：灰色色块 -->
+        <TextView
+            android:id="@+id/btnActionPin"
+            android:layout_width="72dp"
+            android:layout_height="match_parent"
+            android:background="@drawable/bg_action_pin"
+            android:gravity="center"
+            android:paddingHorizontal="@dimen/dp_6"
+            android:text="@string/action_pin"
+            android:textColor="@android:color/white"
+            android:textSize="@dimen/sp_13"
+            android:textStyle="bold" />
+
+        <!-- 编辑（中）：主色色块 -->
+        <TextView
+            android:id="@+id/btnActionEdit"
+            android:layout_width="72dp"
+            android:layout_height="match_parent"
+            android:background="@drawable/bg_action_edit"
+            android:gravity="center"
+            android:paddingHorizontal="@dimen/dp_6"
+            android:text="@string/action_edit"
+            android:textColor="@android:color/white"
+            android:textSize="@dimen/sp_13"
+            android:textStyle="bold" />
+
+        <!-- 删除（右）：红色色块，右端圆角与卡片呼应 -->
+        <TextView
+            android:id="@+id/btnActionDelete"
+            android:layout_width="72dp"
+            android:layout_height="match_parent"
+            android:background="@drawable/bg_action_delete"
+            android:gravity="center"
+            android:paddingHorizontal="@dimen/dp_6"
+            android:text="@string/action_delete"
+            android:textColor="@android:color/white"
+            android:textSize="@dimen/sp_13"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- 内容层：设备信息卡片 -->
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/card"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:padding="16dp">
+        android:layout_marginHorizontal="@dimen/dp_16"
+        android:layout_marginVertical="6dp"
+        android:foreground="?attr/selectableItemBackground"
+        app:cardBackgroundColor="@color/md_surface"
+        app:cardCornerRadius="@dimen/radius_xl"
+        app:cardElevation="2dp"
+        app:strokeColor="@color/md_outlineVariant"
+        app:strokeWidth="1dp">
 
-        <!-- 左侧渐变强调条 -->
-        <View
-            android:id="@+id/accentBar"
-            android:layout_width="5dp"
-            android:layout_height="0dp"
-            android:layout_marginEnd="14dp"
-            android:background="@drawable/bg_header_gradient"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent" />
-
-        <ImageView 
-            android:id="@+id/imgDeviceIcon"
-            android:layout_width="52dp"
-            android:layout_height="52dp"
-            android:background="@drawable/bg_circle_primary"
-            android:padding="12dp"
-            android:src="@drawable/ic_device"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintStart_toEndOf="@id/accentBar"
-            app:layout_constraintTop_toTopOf="parent"
-            app:tint="@color/md_onPrimaryContainer" android:contentDescription="@null" />
-
-        <TextView
-            android:id="@+id/tvDeviceName"
-            android:layout_width="0dp"
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginStart="14dp"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:textColor="@color/md_onSurface"
-            android:textSize="17sp"
-            android:textStyle="bold"
-            app:layout_constraintEnd_toStartOf="@id/dotOnline"
-            app:layout_constraintStart_toEndOf="@id/imgDeviceIcon"
-            app:layout_constraintTop_toTopOf="@id/imgDeviceIcon" />
+            android:orientation="vertical"
+            android:padding="@dimen/dp_16">
 
-        <TextView
-            android:id="@+id/tvDeviceId"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="14dp"
-            android:layout_marginTop="3dp"
-            android:ellipsize="middle"
-            android:maxLines="1"
-            android:textColor="@color/md_onSurfaceVariant"
-            android:textSize="13sp"
-            app:layout_constraintEnd_toStartOf="@id/dotOnline"
-            app:layout_constraintStart_toEndOf="@id/imgDeviceIcon"
-            app:layout_constraintTop_toBottomOf="@id/tvDeviceName" />
+            <!-- 第一行：左侧方形图标区 + 设备名/ID + 状态药丸 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
 
-        <View
-            android:id="@+id/dotOnline"
-            android:layout_width="9dp"
-            android:layout_height="9dp"
-            android:layout_marginEnd="8dp"
-            android:background="@drawable/bg_dot_offline"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintEnd_toStartOf="@id/imgChevron"
-            app:layout_constraintTop_toTopOf="parent" />
+                <!-- 左侧：方形图标容器（与 Hero 卡一致） -->
+                <FrameLayout
+                    android:layout_width="@dimen/size_48"
+                    android:layout_height="@dimen/size_48"
+                    android:background="@drawable/bg_hero_icon_box">
 
-        <!-- 状态灯高光：白色径向光泽叠在 dotOnline 左上角，使其从扁平圆点变为球面质感（固定白色，不参与状态 tint） -->
-        <View
-            android:id="@+id/dotGloss"
-            android:layout_width="6dp"
-            android:layout_height="6dp"
-            android:background="@drawable/bg_dot_gloss"
-            app:layout_constraintStart_toStartOf="@id/dotOnline"
-            app:layout_constraintTop_toTopOf="@id/dotOnline" />
+                    <ImageView
+                        android:id="@+id/imgDeviceIcon"
+                        android:layout_width="22dp"
+                        android:layout_height="22dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/ic_device"
+                        app:tint="@color/md_primary"
+                        android:contentDescription="@null" />
 
-        <ImageView 
-            android:id="@+id/imgChevron"
-            android:layout_width="18dp"
-            android:layout_height="18dp"
-            android:layout_marginStart="8dp"
-            android:src="@drawable/ic_chevron_right"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintTop_toTopOf="parent"
-            app:tint="@color/md_outline" android:contentDescription="@null" />
+                    <ImageView
+                        android:id="@+id/imgPinBadge"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="top|end"
+                        android:contentDescription="@null"
+                        android:src="@drawable/ic_pin"
+                        android:visibility="gone"
+                        app:tint="@color/md_primary" />
+                </FrameLayout>
 
-    </androidx.constraintlayout.widget.ConstraintLayout>
+                <!-- 中间：设备名 + 设备ID -->
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="@dimen/dp_14"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
 
-</com.google.android.material.card.MaterialCardView>
+                    <TextView
+                        android:id="@+id/tvDeviceName"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:textColor="@color/md_onSurface"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/tvDeviceId"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:ellipsize="middle"
+                        android:maxLines="1"
+                        android:textColor="@color/md_onSurfaceVariant"
+                        android:textSize="12sp" />
+                </LinearLayout>
+
+                <!-- 右侧：状态药丸（替代原来的小圆点） -->
+                <TextView
+                    android:id="@+id/tvStatusPill"
+                    android:layout_width="wrap_content"
+                    android:layout_height="@dimen/dp_26"
+                    android:background="@drawable/bg_status_pill_offline"
+                    android:gravity="center_vertical"
+                    android:minWidth="0dp"
+                    android:paddingHorizontal="@dimen/dp_10"
+                    android:text="离线"
+                    android:textColor="@color/white"
+                    android:textSize="@dimen/sp_11" />
+
+            </LinearLayout>
+
+            <!-- 第二行：最后在线时间 / 信号质量（紧凑信息行） -->
+            <LinearLayout
+                android:id="@+id/infoRow"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/dp_10"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <ImageView
+                    android:layout_width="14dp"
+                    android:layout_height="14dp"
+                    android:src="@drawable/daily_ic_list"
+                    android:contentDescription="@null"
+                    app:tint="@color/md_outline" />
+
+                <TextView
+                    android:id="@+id/tvLastSeen"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="@dimen/dp_8"
+                    android:layout_weight="1"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:text="—"
+                    android:textColor="@color/md_onSurfaceVariant"
+                    android:textSize="12sp" />
+
+                <ImageView
+                    android:id="@+id/imgChevron"
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:layout_marginStart="6dp"
+                    android:src="@drawable/ic_chevron_right"
+                    app:tint="@color/md_outline"
+                    android:contentDescription="@null" />
+            </LinearLayout>
+
+        </LinearLayout>
+
+    </com.google.android.material.card.MaterialCardView>
+
+</com.yample.daily.controller.widget.SwipeRevealLayout>

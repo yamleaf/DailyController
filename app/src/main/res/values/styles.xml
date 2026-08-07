@@ -15,12 +15,30 @@
     <style name="SectionCard" parent="Widget.MaterialComponents.CardView">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">wrap_content</item>
-        <item name="android:layout_marginTop">10dp</item>
+        <item name="android:layout_marginTop">@dimen/dp_10</item>
         <item name="cardBackgroundColor">@color/md_surface</item>
-        <item name="cardCornerRadius">20dp</item>
-        <item name="cardElevation">0dp</item>
+        <item name="cardCornerRadius">@dimen/radius_card</item>
+        <item name="cardElevation">@dimen/elev_surface</item>
         <item name="strokeColor">@color/md_outlineVariant</item>
         <item name="strokeWidth">1dp</item>
+    </style>
+
+    <style name="DangerOutlinedButton" parent="Widget.Material3.Button.OutlinedButton">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">12dp</item>
+        <item name="android:textColor">@color/md_error</item>
+        <item name="strokeColor">@color/md_error</item>
+    </style>
+
+    <!-- 底部导航选中指示线：2px 紫蓝，贴底居中（替代默认 Material3 填充圆角指示器） -->
+    <style name="Widget.DC.BottomNav.ActiveIndicator" parent="Widget.Material3.BottomNavigationView.ActiveIndicator">
+        <item name="android:width">40dp</item>
+        <item name="android:height">3dp</item>
+        <item name="android:gravity">bottom</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">4dp</item>
+        <item name="android:tint">@color/md_primary</item>
     </style>
 
     <style name="SectionBody">

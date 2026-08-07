@@ -22,7 +22,11 @@ class TaskRowAdapter(
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val item = items[position]
         holder.binding.tvTaskTime.text = item.time
-        holder.binding.tvTaskSub.text = "实际执行 ${item.actualTime ?: item.time}"
+        holder.binding.tvTaskSub.text = if (item.name.isNotBlank()) {
+            "${item.name} · 实际执行 ${item.actualTime ?: item.time}"
+        } else {
+            "实际执行 ${item.actualTime ?: item.time}"
+        }
         holder.binding.tvTaskStatus.text = item.statusLabel
         val (color, bg) = statusStyle(item.status)
         holder.binding.tvTaskStatus.setTextColor(ContextCompat.getColor(holder.itemView.context, color))

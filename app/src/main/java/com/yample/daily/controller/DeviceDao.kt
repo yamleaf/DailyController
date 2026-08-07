@@ -9,7 +9,7 @@ import androidx.room.Delete
 
 @Dao
 interface DeviceDao {
-    @Query("SELECT * FROM devices")
+    @Query("SELECT * FROM devices ORDER BY pinned DESC")
     suspend fun getAll(): List<DeviceRecord>
 
     @Query("SELECT * FROM devices WHERE deviceId = :deviceId")

@@ -148,4 +148,6 @@ dependencies {
     implementation 'androidx.room:room-ktx:2.8.2'
     // Gson
     implementation 'com.google.code.gson:gson:2.11.0'
+    // 磨砂玻璃（悬浮导航模糊背景；API 31+ 走硬件 RenderEffect，低版本走 RenderScript）
+    implementation 'com.github.Dimezis:BlurView:version-2.0.4'
 }

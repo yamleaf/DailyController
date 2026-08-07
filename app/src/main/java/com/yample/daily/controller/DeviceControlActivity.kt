@@ -2,16 +2,23 @@ package com.yample.daily.controller
 
 import android.os.Bundle
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.util.Log
+import androidx.transition.TransitionManager
 import android.view.View
+import android.view.ViewGroup
 import android.widget.EditText
+import android.widget.ImageView
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.room.Room
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.snackbar.Snackbar
+import com.google.android.material.transition.MaterialFadeThrough
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
@@ -50,6 +57,11 @@ class DeviceControlActivity : AppCompatActivity() {
         .create()
     private val TAG = "DeviceControlActivity"
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
+    /** 返回时统一应用反向转场动画（与进入时对称） */
+    override fun finish() {
+        super.finish()
+    }
 
     private var pairRetries = 0
     private val PAIR_MAX_RETRIES = 3
@@ -123,14 +135,14 @@ class DeviceControlActivity : AppCompatActivity() {
     private lateinit var tasksFragment: TasksFragment
     private lateinit var calendarFragment: CalendarFragment
     private lateinit var settingsFragment: SettingsFragment
-    private lateinit var permissionsFragment: PermissionsFragment
+    private lateinit var deviceFragment: DeviceFragment
 
     companion object {
         private const val TAG_OVERVIEW = "overview"
         private const val TAG_TASKS = "tasks"
         private const val TAG_CALENDAR = "calendar"
         private const val TAG_SETTINGS = "settings"
-        private const val TAG_PERMISSIONS = "permissions"
+        private const val TAG_DEVICE = "device"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -169,16 +181,8 @@ class DeviceControlActivity : AppCompatActivity() {
         binding.toolbar.title = device.name
 
         initFragments()
-        binding.bottomNav.setOnItemSelectedListener { item ->
-            when (item.itemId) {
-                R.id.nav_overview -> switchTab(TAG_OVERVIEW)
-                R.id.nav_tasks -> switchTab(TAG_TASKS)
-                R.id.nav_calendar -> switchTab(TAG_CALENDAR)
-                R.id.nav_settings -> switchTab(TAG_SETTINGS)
-                R.id.nav_permissions -> switchTab(TAG_PERMISSIONS)
-            }
-            true
-        }
+        setupControllerNav()
+        switchTab(TAG_OVERVIEW)
 
         if (remoteEnabled) {
             setConnStatus("连接中…", false)
@@ -197,14 +201,18 @@ class DeviceControlActivity : AppCompatActivity() {
             }
             onRemoteToggle = { on -> this@DeviceControlActivity.setRemoteEnabled(on) }
             onAction = { action -> sendAction(action) }
+            onLoopToggle = { on ->
+                sendUpdate(Protocol.FIELD_TASK_AUTO_RECYCLE, PacketValue.BooleanValue(on))
+                Toast.makeText(this@DeviceControlActivity, if (on) "已下发开启循环" else "已下发关闭循环", Toast.LENGTH_SHORT).show()
+            }
             onRePairClick = { retryPair() }
             onRetryClick = { retryConnection() }
             onReconnectClick = { retryConnection() }
             setRemoteEnabled(remoteEnabled)
         }
         tasksFragment = TasksFragment().apply {
-            onAddTask = { time -> sendTask("add", time, null) }
-            onEditTask = { item, newTime -> sendTask("update", newTime, item.time) }
+            onAddTask = { time, name -> sendTask("add", time, null, name) }
+            onEditTask = { item, newTime, name -> sendTask("update", newTime, item.time, name) }
             onDeleteTask = { item -> sendTask("delete", item.time, item.time) }
         }
         calendarFragment = CalendarFragment()
@@ -220,40 +228,96 @@ class DeviceControlActivity : AppCompatActivity() {
                 )
             }
             onChannelChange = { v -> sendUpdate(Protocol.FIELD_MSG_CHANNEL, PacketValue.IntValue(v)) }
-            // 需求：解绑设备入口移至设置页
+        }
+        deviceFragment = DeviceFragment().apply {
+            // 需求：解绑设备入口移至设备页
             onUnbind = { confirmUnbind() }
         }
-        permissionsFragment = PermissionsFragment()
 
         supportFragmentManager.beginTransaction()
             .add(R.id.fragmentContainer, overviewFragment, TAG_OVERVIEW)
             .add(R.id.fragmentContainer, tasksFragment, TAG_TASKS)
             .add(R.id.fragmentContainer, calendarFragment, TAG_CALENDAR)
             .add(R.id.fragmentContainer, settingsFragment, TAG_SETTINGS)
-            .add(R.id.fragmentContainer, permissionsFragment, TAG_PERMISSIONS)
+            .add(R.id.fragmentContainer, deviceFragment, TAG_DEVICE)
             .hide(tasksFragment)
             .hide(calendarFragment)
             .hide(settingsFragment)
-            .hide(permissionsFragment)
+            .hide(deviceFragment)
             .commitNow()
         overviewFragment.setRemoteEnabled(remoteEnabled)
     }
 
     private fun switchTab(tag: String) {
+        if (tag == currentFragmentTag) return
         currentFragmentTag = tag
-        val ft = supportFragmentManager.beginTransaction()
-        listOf(overviewFragment, tasksFragment, calendarFragment, settingsFragment, permissionsFragment)
-            .forEach { ft.hide(it) }
+        updateNavSelection(tag)
         val target = when (tag) {
             TAG_OVERVIEW -> overviewFragment
             TAG_TASKS -> tasksFragment
             TAG_CALENDAR -> calendarFragment
             TAG_SETTINGS -> settingsFragment
-            TAG_PERMISSIONS -> permissionsFragment
+            TAG_DEVICE -> deviceFragment
             else -> overviewFragment
         }
-        ft.show(target).commitNow()
+        val reduceMotion = android.provider.Settings.Global.getFloat(
+            contentResolver,
+            android.provider.Settings.Global.TRANSITION_ANIMATION_SCALE,
+            1f
+        ) == 0f
+        val ft = supportFragmentManager.beginTransaction()
+        listOf(overviewFragment, tasksFragment, calendarFragment, settingsFragment, deviceFragment)
+            .forEach { ft.hide(it) }
+        ft.show(target)
+        if (reduceMotion) {
+            ft.commitNow()
+        } else {
+            // Material Motion「淡入穿透」：对容器内 fragment 视图的显隐变化做交叉淡入淡出（~250ms）
+            TransitionManager.beginDelayedTransition(
+                findViewById<ViewGroup>(R.id.fragmentContainer),
+                MaterialFadeThrough()
+            )
+            ft.commitNow()
+        }
         currentSnapshot?.let { target.refresh(it) }
+    }
+
+    /** ═══════ 自定义悬浮导航（5 项均等分布，总览为凸出枢纽圆） ═══════ */
+    private fun setupControllerNav() {
+        // 绑定 5 个导航项的点击事件
+        binding.navCalendar.setOnClickListener { switchTab(TAG_CALENDAR) }
+        binding.navTasks.setOnClickListener { switchTab(TAG_TASKS) }
+        binding.navOverview.setOnClickListener { switchTab(TAG_OVERVIEW) }
+        binding.navDevice.setOnClickListener { switchTab(TAG_DEVICE) }
+        binding.navSettings.setOnClickListener { switchTab(TAG_SETTINGS) }
+
+        // 初始选中态
+        updateNavSelection(TAG_OVERVIEW)
+    }
+
+    /** 更新导航选中态：图标/文字颜色 + 底部指示线（5 项统一处理） */
+    private fun updateNavSelection(activeTag: String) {
+        val activeColor = ContextCompat.getColor(this, R.color.md_primary)
+        val inactiveColor = ContextCompat.getColor(this, R.color.md_onSurfaceVariant)
+
+        // 辅助函数：设置单个项的选中/未选中态
+        fun setItemState(icon: ImageView, label: TextView, line: View, isActive: Boolean) {
+            icon.imageTintList = if (isActive)
+                ColorStateList.valueOf(activeColor) else ColorStateList.valueOf(inactiveColor)
+            label.setTextColor(if (isActive) activeColor else inactiveColor)
+            line.visibility = if (isActive) View.VISIBLE else View.GONE
+        }
+
+        setItemState(binding.iconCalendar, binding.labelCalendar, binding.lineCalendar,
+            activeTag == TAG_CALENDAR)
+        setItemState(binding.iconTasks, binding.labelTasks, binding.lineTasks,
+            activeTag == TAG_TASKS)
+        setItemState(binding.iconOverview, binding.labelOverview, binding.lineOverview,
+            activeTag == TAG_OVERVIEW)
+        setItemState(binding.iconDevice, binding.labelDevice, binding.lineDevice,
+            activeTag == TAG_DEVICE)
+        setItemState(binding.iconSettings, binding.labelSettings, binding.lineSettings,
+            activeTag == TAG_SETTINGS)
     }
 
     private fun refreshCurrentFragment() {
@@ -263,7 +327,7 @@ class DeviceControlActivity : AppCompatActivity() {
             TAG_TASKS -> tasksFragment
             TAG_CALENDAR -> calendarFragment
             TAG_SETTINGS -> settingsFragment
-            TAG_PERMISSIONS -> permissionsFragment
+            TAG_DEVICE -> deviceFragment
             else -> overviewFragment
         }
         target.refresh(snapshot)
@@ -477,7 +541,7 @@ class DeviceControlActivity : AppCompatActivity() {
 
     private fun refreshQuotaUi() {
         val stats = MqttQuota.get(this)
-        runOnUiThread { overviewFragment.showQuota(stats) }
+        runOnUiThread { deviceFragment.showQuota(stats) }
     }
 
     /** B3：Toast 去重 —— 相同 key 在 dedupeWindowMs 内只弹一次，重复事件只更新状态 UI 不再轰炸 */
@@ -865,7 +929,8 @@ class DeviceControlActivity : AppCompatActivity() {
             runOnUiThread {
                 overviewFragment.setSnapshotHint(SnapshotHint.NONE)
                 overviewFragment.setStaleBanner(false)
-                if (rtt >= 0) overviewFragment.setConnQuality(rtt)
+                overviewFragment.setProbing(false)
+                if (rtt >= 0) deviceFragment.setConnQuality(rtt)
                 // 探活/快照拉取成功 = 被控端确实在线 → 点亮绿灯（不再依赖 broker 连接态）
                 setConnStatus("在线（已配对）", true)
                 refreshCurrentFragment()
@@ -905,6 +970,7 @@ class DeviceControlActivity : AppCompatActivity() {
             // messageArrived 跑在 Paho 后台线程，setSnapshotHint 直接碰 binding，必须回主线程
             runOnUiThread {
                 overviewFragment.setSnapshotHint(SnapshotHint.NONE)
+                overviewFragment.setProbing(false)
                 // 被控端主动推送增量 = 确证在线 → 点亮绿灯
                 setConnStatus("在线（已配对）", true)
                 refreshCurrentFragment()
@@ -1017,6 +1083,7 @@ class DeviceControlActivity : AppCompatActivity() {
             tasks.add(TaskItem(
                 id = o.get("id").asInt,
                 time = o.get("time").asString,
+                name = o.get("name")?.asString ?: "",
                 actualTime = o.get("actualTime")?.asString,
                 status = o.get("status")?.asString ?: "pending",
                 statusLabel = o.get("statusLabel")?.asString ?: "待执行"
@@ -1120,7 +1187,7 @@ val calendar = CalendarSnapshot(
         }
     }
 
-    private fun sendTask(action: String, time: String, oldTime: String? = null) {
+    private fun sendTask(action: String, time: String, oldTime: String? = null, name: String? = null) {
         if (!remoteEnabled) {
             Toast.makeText(this, "MQTT 连接已关闭，无法编辑任务", Toast.LENGTH_SHORT).show(); return
         }
@@ -1141,6 +1208,7 @@ val calendar = CalendarSnapshot(
         val obj = com.google.gson.JsonObject()
         obj.addProperty("action", action)
         obj.addProperty("time", time)
+        if (name != null) obj.addProperty("name", name)
         if (oldTime != null) obj.addProperty("oldTime", oldTime)
         val json = obj.toString()
         val ts = System.currentTimeMillis()
@@ -1240,6 +1308,7 @@ val calendar = CalendarSnapshot(
         // 都会调到这，若在上层无条件置琥珀，后到者会把已确认成功的绿灯覆盖成黄、且此处因
         // firstEntryProbeStarted=true 直接 return 不再发探活 → 色灯卡黄。集中在探活真正发起点设置。
         runOnUiThread { setConnStatus("探活中…", false) }
+        runOnUiThread { overviewFragment.setProbing(true) }
         sendQuery()
     }
 
@@ -1253,7 +1322,7 @@ val calendar = CalendarSnapshot(
         if (recentlyMarkedOffline) return
         recentlyMarkedOffline = true
         runOnUiThread {
-            setConnStatus("设备离线（无响应）", false, "被控端未响应，可能已经离线。")
+            setConnStatus("设备离线（无响应）", false, "被控端未响应，可能已经离线/解绑。")
             overviewFragment.setActionsEnabled(false)
             Snackbar.make(
                 binding.root,
@@ -1280,11 +1349,12 @@ val calendar = CalendarSnapshot(
 
     // ===================== 解绑 =====================
     private fun confirmUnbind() {
-        AlertDialog.Builder(this)
-            .setTitle("解绑设备")
-            .setMessage("确定从控制端移除该设备？被控端将收到解绑通知并清除绑定。本机 MQTT 配置不受影响。")
-            .setPositiveButton("解绑") { _, _ -> doUnbind() }
-            .setNegativeButton("取消", null).show()
+        showDestructiveConfirm(
+            this,
+            title = "解绑设备",
+            message = "确定从控制端移除该设备？被控端将收到解绑通知并清除绑定。本机 MQTT 配置不受影响。",
+            confirmText = "解绑"
+        ) { doUnbind() }
     }
 
     private fun doUnbind() {

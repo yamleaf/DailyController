@@ -5,12 +5,14 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.yample.daily.controller.databinding.FragmentCalendarBinding
 import com.yample.daily.controller.databinding.ItemCalendarDayBinding
+import com.yample.daily.controller.databinding.RowInfoBinding
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -59,6 +61,37 @@ class CalendarFragment : Fragment(), SnapshotFragment {
             days.add(CalendarDay(date = "", weekday = 0, status = "none", label = ""))
         }
         calendarAdapter.notifyDataSetChanged()
+        renderHistory(s)
+    }
+
+    /** 需求 6：渲染最近打卡记录（由概览页迁移至日历页） */
+    private fun renderHistory(s: DeviceSnapshot) {
+        binding.layoutHistory.removeAllViews()
+        if (s.history.isEmpty()) {
+            val empty = TextView(requireContext()).apply {
+                text = "近 14 天无打卡记录"
+                textSize = 13f
+                setTextColor(requireContext().getColor(R.color.md_onSurfaceVariant))
+                setPadding(0, 12, 0, 4)
+            }
+            binding.layoutHistory.addView(empty)
+            return
+        }
+        s.history.forEach { h ->
+            val row = RowInfoBinding.inflate(LayoutInflater.from(requireContext()))
+            row.tvRowLabel.text = h.time
+            row.tvRowValue.text = h.result
+            row.tvRowValue.setTextColor(historyColor(h.result))
+            binding.layoutHistory.addView(row.root)
+        }
+    }
+
+    private fun historyColor(result: String): Int {
+        return requireContext().getColor(when {
+            result.contains("成功") -> R.color.md_tertiary
+            result.contains("超时") -> R.color.md_error
+            else -> R.color.md_onSurface
+        })
     }
 
     override fun onDestroyView() {

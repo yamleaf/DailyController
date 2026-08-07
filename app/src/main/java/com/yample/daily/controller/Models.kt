@@ -52,6 +52,7 @@ data class StatusItem(
 data class TaskItem(
     val id: Int,
     val time: String,
+    val name: String = "",      // 任务名称/备注（多任务命名，可区分不同时间点）
     val actualTime: String? = null,
     val status: String = "pending",
     val statusLabel: String = "待执行"

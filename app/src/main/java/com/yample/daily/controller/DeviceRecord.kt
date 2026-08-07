@@ -13,5 +13,7 @@ data class DeviceRecord(
     val ctlPass: String,
     val sessionSecret: String,  // 配对握手后派生的会话密钥，运行时报文验签
     val pairingToken: String,   // 配对令牌（握手成功后清空）
-    val bound: Boolean
+    val bound: Boolean,
+    val pinned: Boolean = false, // QQ 式置顶：置顶设备排在列表最前
+    val group: String = ""       // 设备分组（空 = 未分组）
 ) : Serializable

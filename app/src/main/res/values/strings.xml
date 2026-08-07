@@ -1,4 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">远程遥控</string>
+    <string name="action_edit">编辑</string>
+    <string name="action_delete">删除</string>
+    <string name="action_pin">置顶</string>
+    <string name="action_unpin">取消置顶</string>
+    <string name="search_empty_subtitle">未找到名称或 ID 包含「%1$s」的设备\n试试其他关键词</string>
+    <string name="settings_version_summary">版本、构建来源、Git 提交等</string>
 </resources>

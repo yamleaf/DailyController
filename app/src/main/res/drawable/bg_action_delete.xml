@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- QQ 式左滑操作块：删除（错误红实底，最右侧圆角与设备卡呼应） -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/md_error" />
+    <corners
+        android:topRightRadius="@dimen/radius_xl"
+        android:bottomRightRadius="@dimen/radius_xl" />
+</shape>

@@ -9,7 +9,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="@drawable/bg_header_gradient"
-        app:elevation="0dp">
+        app:elevation="@dimen/elev_raised">
 
         <com.google.android.material.appbar.MaterialToolbar
             android:id="@+id/toolbarMain"
@@ -27,6 +27,248 @@
         android:layout_height="match_parent"
         app:layout_behavior="@string/appbar_scrolling_view_behavior">
 
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical">
+
+        <!-- ============ Hero 渐变头部卡（问候语 + 统计数字） ============ -->
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/dp_16"
+            android:layout_marginEnd="@dimen/dp_16"
+            android:layout_marginTop="@dimen/dp_8"
+            app:cardBackgroundColor="@color/md_primary"
+            app:cardCornerRadius="@dimen/radius_xl"
+            app:cardElevation="4dp"
+            app:strokeWidth="0dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="@dimen/dp_20">
+
+                <!-- 第一行：标题 + 问候语 + 设置齿轮 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="远程控制"
+                            android:textColor="#B3FFFFFF"
+                            android:textSize="@dimen/sp_13" />
+
+                        <TextView
+                            android:id="@+id/tvHeroGreeting"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="@dimen/dp_2"
+                            android:text="设备列表"
+                            android:textColor="#99FFFFFF"
+                            android:textSize="14sp" />
+                    </LinearLayout>
+
+                    <ImageView
+                        android:id="@+id/btnHeroSettings"
+                        android:layout_width="36dp"
+                        android:layout_height="36dp"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:contentDescription="@null"
+                        android:padding="6dp"
+                        android:src="@drawable/daily_ic_settings"
+                        app:tint="#B3FFFFFF" />
+                </LinearLayout>
+
+                <!-- 第二行：统计数字（总设备 / 在线 / 异常） -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/dp_16"
+                    android:orientation="horizontal"
+                    android:weightSum="3">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:background="#1AFFFFFF"
+                        android:gravity="center"
+                        android:orientation="vertical"
+                        android:paddingTop="@dimen/dp_10"
+                        android:paddingBottom="@dimen/dp_10">
+
+                        <TextView
+                            android:id="@+id/tvStatTotal"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="0"
+                            android:textColor="@android:color/white"
+                            android:textSize="24sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="总设备"
+                            android:textColor="#B3FFFFFF"
+                            android:textSize="11sp" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:layout_weight="1"
+                        android:background="#1AFFFFFF"
+                        android:gravity="center"
+                        android:orientation="vertical"
+                        android:paddingTop="@dimen/dp_10"
+                        android:paddingBottom="@dimen/dp_10">
+
+                        <TextView
+                            android:id="@+id/tvStatOnline"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="0"
+                            android:textColor="@color/md_success"
+                            android:textSize="24sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:drawableStart="@drawable/dot_online"
+                            android:drawablePadding="4dp"
+                            android:text="在线"
+                            android:textColor="#B3FFFFFF"
+                            android:textSize="11sp" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:layout_weight="1"
+                        android:background="#1AFFFFFF"
+                        android:gravity="center"
+                        android:orientation="vertical"
+                        android:paddingTop="@dimen/dp_10"
+                        android:paddingBottom="@dimen/dp_10">
+
+                        <TextView
+                            android:id="@+id/tvStatOffline"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="0"
+                            android:textColor="@color/md_error"
+                            android:textSize="24sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:drawableStart="@drawable/dot_offline"
+                            android:drawablePadding="4dp"
+                            android:text="异常"
+                            android:textColor="#B3FFFFFF"
+                            android:textSize="11sp" />
+                    </LinearLayout>
+                </LinearLayout>
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- ============ 搜索栏 ============ -->
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/dp_16"
+            android:layout_marginEnd="@dimen/dp_16"
+            android:layout_marginTop="@dimen/dp_12"
+            app:cardBackgroundColor="@color/md_surface"
+            app:cardCornerRadius="@dimen/radius_xl"
+            app:cardElevation="1dp"
+            app:strokeColor="@color/md_outlineVariant"
+            app:strokeWidth="1dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="@dimen/dp_16"
+                android:paddingEnd="@dimen/dp_16"
+                android:paddingTop="@dimen/dp_12"
+                android:paddingBottom="@dimen/dp_12">
+
+                <ImageView
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:src="@drawable/ic_search"
+                    android:contentDescription="@null"
+                    app:tint="@color/md_onSurfaceVariant" />
+
+                <EditText
+                    android:id="@+id/etSearch"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="@dimen/dp_12"
+                    android:layout_weight="1"
+                    android:background="@null"
+                    android:hint="搜索设备 / ID"
+                    android:imeOptions="actionSearch"
+                    android:inputType="text"
+                    android:singleLine="true"
+                    android:textColor="@color/md_onSurface"
+                    android:textColorHint="@color/md_onSurfaceVariant"
+                    android:textSize="@dimen/sp_15" />
+
+                <ImageView
+                    android:id="@+id/btnSearchClear"
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:contentDescription="@null"
+                    android:src="@drawable/ic_close"
+                    android:visibility="gone"
+                    app:tint="@color/md_onSurfaceVariant" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- 分组过滤条：全部 + 各设备分组（无分组设备时隐藏） -->
+        <android.widget.HorizontalScrollView
+            android:id="@+id/groupBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/dp_8"
+            android:fillViewport="true"
+            android:scrollbars="none"
+            android:visibility="gone">
+
+            <com.google.android.material.chip.ChipGroup
+                android:id="@+id/groupChips"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingStart="@dimen/dp_16"
+                android:paddingEnd="@dimen/dp_16"
+                app:chipSpacingHorizontal="6dp"
+                app:singleLine="true"
+                app:singleSelection="true" />
+        </android.widget.HorizontalScrollView>
+
         <!-- 空状态引导 -->
         <LinearLayout
             android:id="@+id/emptyState"
@@ -35,55 +277,68 @@
             android:layout_gravity="center"
             android:gravity="center"
             android:orientation="vertical"
-            android:padding="32dp"
+            android:padding="@dimen/dp_32"
             android:visibility="gone">
 
-            <ImageView 
-                android:layout_width="120dp"
-                android:layout_height="120dp"
-                android:background="@drawable/bg_circle_primary"
-                android:padding="24dp"
-                android:src="@drawable/ic_device"
-                app:tint="@color/md_onPrimaryContainer" android:contentDescription="@null" />
+            <ImageView
+                android:layout_width="@dimen/size_120"
+                android:layout_height="@dimen/size_120"
+                android:src="@drawable/ic_empty_devices"
+                android:contentDescription="@null" />
 
             <TextView
+                android:id="@+id/tvEmptyTitle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="24dp"
+                android:layout_marginTop="@dimen/dp_24"
                 android:text="还没有绑定设备"
                 android:textColor="@color/md_onSurface"
-                android:textSize="20sp"
-                android:textStyle="bold" />
+                android:textSize="@dimen/sp_20"
+                android:textStyle="bold"
+                android:letterSpacing="0.02" />
 
             <TextView
+                android:id="@+id/tvEmptySubtitle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
+                android:layout_marginTop="@dimen/dp_8"
                 android:gravity="center"
-                android:lineSpacingExtra="4dp"
+                android:lineSpacingExtra="@dimen/dp_4"
                 android:text="扫描被控端生成的二维码\n即可远程控制你的打卡设备"
                 android:textColor="@color/md_onSurfaceVariant"
-                android:textSize="14sp" />
+                android:textSize="@dimen/sp_14" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnEmptyScan"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="28dp"
-                android:paddingHorizontal="24dp"
+                android:layout_marginTop="@dimen/dp_24"
+                android:paddingHorizontal="@dimen/dp_24"
                 android:text="立即扫码"
+                style="@style/Widget.Material3.Button"
                 app:icon="@drawable/ic_scan"
-                app:iconTint="@color/md_onPrimary" />
+                app:iconTint="@color/md_onPrimary"
+                app:iconPadding="@dimen/dp_8" />
 
         </LinearLayout>
 
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/rvDevices"
+        <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+            android:id="@+id/swipeRefresh"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:clipToPadding="false"
-            android:paddingBottom="88dp"
-            android:paddingTop="8dp" />
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:background="@color/md_background">
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rvDevices"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clipToPadding="false"
+                android:paddingBottom="88dp"
+                android:paddingTop="@dimen/dp_8" />
+        </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+
+        </LinearLayout>
 
     </FrameLayout>
 
@@ -91,10 +346,17 @@
         android:id="@+id/fabAdd"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_margin="20dp"
+        android:layout_margin="@dimen/dp_20"
+        android:contentDescription="添加设备"
         android:text="添加设备"
+        android:textColor="@color/md_onPrimaryContainer"
+        app:backgroundTint="@color/md_primaryContainer"
+        app:elevation="@dimen/elev_fab"
         app:icon="@drawable/ic_add"
+        app:iconTint="@color/md_onPrimaryContainer"
         app:layout_anchor="@id/rvDevices"
-        app:layout_anchorGravity="bottom|end" />
+        app:layout_anchorGravity="bottom|end"
+        app:rippleColor="@color/md_primary"
+        android:stateListAnimator="@animator/btn_press_scale" />
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

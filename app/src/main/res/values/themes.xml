@@ -1,4 +1,21 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- ShapeAppearance 圆角体系（与 DT 协同） -->
+    <style name="ShapeAppearance.DC.Small" parent="ShapeAppearance.Material3.SmallComponent">
+        <item name="cornerSize">4dp</item>
+    </style>
+    <style name="ShapeAppearance.DC.Medium" parent="ShapeAppearance.Material3.MediumComponent">
+        <item name="cornerSize">8dp</item>
+    </style>
+    <style name="ShapeAppearance.DC.Large" parent="ShapeAppearance.Material3.LargeComponent">
+        <item name="cornerSize">16dp</item>
+    </style>
+    <style name="ShapeAppearance.DC.XL" parent="ShapeAppearance.Material3.LargeComponent">
+        <item name="cornerSize">20dp</item>
+    </style>
+    <style name="ShapeAppearance.DC.Full" parent="ShapeAppearance.Material3.LargeComponent">
+        <item name="cornerSize">28dp</item>
+    </style>
+
     <style name="Theme.DailyController" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/md_primary</item>
         <item name="colorOnPrimary">@color/md_onPrimary</item>
@@ -24,5 +41,80 @@
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:navigationBarColor">@color/md_surface</item>
         <item name="android:windowLightNavigationBar">true</item>
+        <!-- 统一对话框主题（16dp 圆角 + 胶囊按钮，双端一致） -->
+        <item name="materialAlertDialogTheme">@style/ThemeOverlay.DC.UnifiedDialog</item>
+        <!-- 底部面板主题（顶部 24dp 圆角） -->
+        <item name="bottomSheetDialogTheme">@style/ThemeOverlay.DC.BottomSheetDialog</item>
+        <!-- 窗口转场：用系统合成（自动尊重系统「减少动态效果」缩放），替代已弃用的 overridePendingTransition -->
+        <item name="android:windowActivityTransitions">true</item>
+        <item name="android:windowEnterTransition">@transition/fade</item>
+        <item name="android:windowExitTransition">@transition/fade</item>
+        <item name="android:windowReenterTransition">@transition/fade</item>
+        <item name="android:windowReturnTransition">@transition/fade</item>
+    </style>
+
+    <!-- 底部面板：仅顶部 24dp 圆角（统一规范） -->
+    <style name="ShapeAppearance.DC.BottomSheet" parent="ShapeAppearance.Material3.LargeComponent">
+        <item name="cornerSizeTopLeft">24dp</item>
+        <item name="cornerSizeTopRight">24dp</item>
+        <item name="cornerSizeBottomLeft">0dp</item>
+        <item name="cornerSizeBottomRight">0dp</item>
+    </style>
+
+    <!-- ===== 统一弹窗按钮样式（胶囊形，双端一致） ===== -->
+    <style name="Widget.DC.Dialog.Button.Positive" parent="Widget.Material3.Button">
+        <item name="backgroundTint">@color/md_primary</item>
+        <item name="android:textColor">@color/md_onPrimary</item>
+        <item name="cornerRadius">20dp</item>
+        <item name="android:minHeight">40dp</item>
+        <item name="android:paddingHorizontal">20dp</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+    <style name="Widget.DC.Dialog.Button.Negative" parent="Widget.Material3.Button.OutlinedButton">
+        <item name="android:textColor">@color/md_outline</item>
+        <item name="strokeColor">@color/md_outlineVariant</item>
+        <item name="strokeWidth">1.5dp</item>
+        <item name="cornerRadius">20dp</item>
+        <item name="android:minHeight">40dp</item>
+        <item name="android:paddingHorizontal">20dp</item>
+        <item name="android:textSize">14sp</item>
+    </style>
+    <style name="Widget.DC.Dialog.Button.Neutral" parent="Widget.Material3.Button.TextButton">
+        <item name="android:textColor">@color/md_primary</item>
+        <item name="android:minHeight">40dp</item>
+        <item name="android:paddingHorizontal">20dp</item>
+        <item name="android:textSize">14sp</item>
+    </style>
+
+    <!-- 弹窗入场/出场动画（scale + fade，200ms / 150ms） -->
+    <style name="Animation.DC.DialogScale" parent="@android:style/Animation">
+        <item name="android:windowEnterAnimation">@anim/dialog_enter</item>
+        <item name="android:windowExitAnimation">@anim/dialog_exit</item>
+    </style>
+
+    <!-- 统一输入框样式（12dp 圆角，双端一致） -->
+    <style name="ShapeAppearance.DC.Input" parent="ShapeAppearance.Material3.LargeComponent">
+        <item name="cornerSize">12dp</item>
+    </style>
+    <style name="Widget.DC.TextInput.Outlined" parent="Widget.Material3.TextInputLayout.OutlinedBox">
+        <item name="shapeAppearance">@style/ShapeAppearance.DC.Input</item>
+    </style>
+
+    <!-- 统一弹窗主题：16dp 圆角 + 胶囊按钮 + 缩放动画 -->
+    <style name="ThemeOverlay.DC.UnifiedDialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
+        <item name="shapeAppearance">@style/ShapeAppearance.DC.Large</item>
+        <item name="colorPrimary">@color/md_primary</item>
+        <item name="buttonBarPositiveButtonStyle">@style/Widget.DC.Dialog.Button.Positive</item>
+        <item name="buttonBarNegativeButtonStyle">@style/Widget.DC.Dialog.Button.Negative</item>
+        <item name="buttonBarNeutralButtonStyle">@style/Widget.DC.Dialog.Button.Neutral</item>
+        <item name="android:windowAnimationStyle">@style/Animation.DC.DialogScale</item>
+    </style>
+
+    <!-- 底部面板主题 -->
+    <style name="ThemeOverlay.DC.BottomSheetDialog" parent="ThemeOverlay.Material3.BottomSheetDialog">
+        <item name="shapeAppearance">@style/ShapeAppearance.DC.BottomSheet</item>
+        <item name="backgroundTint">@color/md_surface</item>
+        <item name="android:windowAnimationStyle">@style/Animation.DC.DialogScale</item>
     </style>
 </resources>

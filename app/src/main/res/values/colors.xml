@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- md_* / header_* / online / offline / md_skip* / md_missed* 已统一收敛到 :protocol 库的设计令牌（values + values-night）。 -->
+
+    <!-- 左滑操作面板（QQ 式色块）：置顶按钮的固定灰色（跟随系统深浅色不变，与 QQ 一致） -->
+    <color name="action_pin_bg">#FF7F7F88</color>
 </resources>

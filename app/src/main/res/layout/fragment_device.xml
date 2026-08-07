@@ -1,0 +1,233 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/md_background"
+    android:fillViewport="true"
+    android:paddingStart="16dp"
+    android:paddingEnd="16dp"
+    android:paddingTop="12dp"
+    android:paddingBottom="100dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <TextView style="@style/SectionTitle" android:text="设备信息" />
+
+        <!-- 连接信息（可折叠，默认收起） -->
+        <com.google.android.material.card.MaterialCardView style="@style/SectionCard">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingHorizontal="16dp"
+                android:paddingVertical="12dp">
+
+                <LinearLayout
+                    android:id="@+id/btnToggleConn"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="?attr/selectableItemBackground"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="连接信息"
+                        android:textColor="@color/md_onSurface"
+                        android:textSize="15sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/tvQuotaText"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginEnd="8dp"
+                        android:text="—"
+                        android:textColor="@color/md_onSurfaceVariant"
+                        android:textSize="13sp" />
+
+                    <ImageView
+                        android:id="@+id/ivChevronConn"
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:src="@drawable/ic_chevron_right"
+                        app:tint="@color/md_outline"
+                        android:contentDescription="@null" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/bodyConn"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:orientation="vertical"
+                    android:visibility="gone">
+
+                    <include layout="@layout/row_info" android:id="@+id/rowBroker" />
+                    <View style="@style/Divider" />
+                    <include layout="@layout/row_info" android:id="@+id/rowDeviceId" />
+                    <View style="@style/Divider" />
+                    <include layout="@layout/row_info" android:id="@+id/rowClientId" />
+                    <View style="@style/Divider" />
+                    <include layout="@layout/row_info" android:id="@+id/rowPaired" />
+                    <View style="@style/Divider" />
+                    <include layout="@layout/row_info" android:id="@+id/rowSynced" />
+                    <View style="@style/Divider" />
+                    <include layout="@layout/row_info" android:id="@+id/rowConnQuality" />
+
+                    <View style="@style/Divider" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:text="消息统计"
+                        android:textColor="@color/md_onSurface"
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
+
+                    <com.google.android.material.progressindicator.LinearProgressIndicator
+                        android:id="@+id/progressQuota"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:max="100"
+                        android:progress="0"
+                        android:visibility="gone"
+                        app:indicatorColor="@color/md_primary"
+                        app:trackColor="@color/md_surfaceVariant"
+                        app:trackThickness="8dp" />
+
+                    <TextView
+                        android:id="@+id/tvQuotaHint"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="本地统计：已发送 + 已接收消息数"
+                        android:textColor="@color/md_onSurfaceVariant"
+                        android:textSize="11sp" />
+
+                    <LinearLayout
+                        android:id="@+id/layoutQuotaDetails"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:orientation="vertical" />
+                </LinearLayout>
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- 设备硬件信息（可折叠，默认收起） -->
+        <com.google.android.material.card.MaterialCardView style="@style/SectionCard">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingHorizontal="16dp"
+                android:paddingVertical="12dp">
+
+                <LinearLayout
+                    android:id="@+id/btnToggleDevice"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="?attr/selectableItemBackground"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingVertical="4dp">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="设备硬件信息"
+                        android:textColor="@color/md_onSurface"
+                        android:textSize="15sp"
+                        android:textStyle="bold" />
+
+                    <ImageView
+                        android:id="@+id/ivChevronDevice"
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:rotation="90"
+                        android:src="@drawable/ic_chevron_right"
+                        app:tint="@color/md_outline"
+                        android:contentDescription="@null" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/bodyDevice"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:visibility="gone">
+
+                    <include layout="@layout/row_info" android:id="@+id/rowModel" />
+                    <View style="@style/Divider" />
+                    <include layout="@layout/row_info" android:id="@+id/rowBrand" />
+                    <View style="@style/Divider" />
+                    <include layout="@layout/row_info" android:id="@+id/rowAndroid" />
+                    <View style="@style/Divider" />
+                    <include layout="@layout/row_info" android:id="@+id/rowApp" />
+                    <View style="@style/Divider" />
+                    <include layout="@layout/row_info" android:id="@+id/rowScreen" />
+                    <View style="@style/Divider" />
+                    <include layout="@layout/row_info" android:id="@+id/rowInstall" />
+                </LinearLayout>
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- 设备管理（由设置页迁入）：解绑设备 -->
+        <com.google.android.material.card.MaterialCardView
+            style="@style/SectionCard"
+            android:layout_marginTop="10dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingHorizontal="16dp"
+                android:paddingVertical="14dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="设备管理"
+                    android:textColor="@color/md_onSurface"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="解绑后将清除本机配对并通知被控端；被控端记录仍可在其本机重新配对"
+                    android:textColor="@color/md_onSurfaceVariant"
+                    android:textSize="12sp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnUnbindDevice"
+                    style="@style/DangerOutlinedButton"
+                    android:text="解绑设备" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:paddingHorizontal="4dp"
+            android:text="连接信息与设备硬件信息来自被控端快照，可能不是最新数据，可回到「总览」点击刷新。"
+            android:textColor="@color/md_onSurfaceVariant"
+            android:textSize="12sp" />
+
+    </LinearLayout>
+
+</androidx.core.widget.NestedScrollView>

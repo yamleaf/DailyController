@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 控制端间距/尺寸/圆角/字号标尺（与被控端 protocol 库保持一致） -->
+<resources>
+    <!-- 间距（4 的倍数节奏） -->
+    <dimen name="dp_2">2dp</dimen>
+    <dimen name="dp_4">4dp</dimen>
+    <dimen name="dp_6">6dp</dimen>
+    <dimen name="dp_8">8dp</dimen>
+    <dimen name="dp_10">10dp</dimen>
+    <dimen name="dp_12">12dp</dimen>
+    <dimen name="dp_14">14dp</dimen>
+    <dimen name="dp_16">16dp</dimen>
+    <dimen name="dp_20">20dp</dimen>
+    <dimen name="dp_24">24dp</dimen>
+    <dimen name="dp_26">26dp</dimen>
+    <dimen name="dp_32">32dp</dimen>
+
+    <!-- 圆角 -->
+    <dimen name="radius_card">16dp</dimen>
+    <dimen name="radius_xl">20dp</dimen>
+    <dimen name="radius_nav">24dp</dimen>
+
+    <!-- 组件尺寸 -->
+    <dimen name="size_40">40dp</dimen>
+    <dimen name="size_48">48dp</dimen>
+    <dimen name="size_56">56dp</dimen>
+    <dimen name="size_120">120dp</dimen>
+    <dimen name="icon_container">40dp</dimen>
+    <dimen name="min_touch">48dp</dimen>
+    <dimen name="item_height">56dp</dimen>
+
+    <!-- 层级（elevation） -->
+    <dimen name="elev_surface">1dp</dimen>
+    <dimen name="elev_raised">3dp</dimen>
+    <dimen name="elev_fab">6dp</dimen>
+
+    <!-- 字号 -->
+    <dimen name="sp_11">11sp</dimen>
+    <dimen name="sp_12">12sp</dimen>
+    <dimen name="sp_13">13sp</dimen>
+    <dimen name="sp_14">14sp</dimen>
+    <dimen name="sp_15">15sp</dimen>
+    <dimen name="sp_18">18sp</dimen>
+    <dimen name="sp_19">19sp</dimen>
+    <dimen name="sp_20">20sp</dimen>
+    <dimen name="sp_22">22sp</dimen>
+</resources>

@@ -9,6 +9,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.timepicker.MaterialTimePicker
 import com.google.android.material.timepicker.TimeFormat
+import com.yample.daily.controller.databinding.DialogTaskBinding
 import com.yample.daily.controller.databinding.FragmentTasksBinding
 
 class TasksFragment : Fragment(), SnapshotFragment {
@@ -19,8 +20,8 @@ class TasksFragment : Fragment(), SnapshotFragment {
     private val taskItems = mutableListOf<TaskItem>()
     private lateinit var taskAdapter: TaskRowAdapter
 
-    var onAddTask: ((String) -> Unit)? = null
-    var onEditTask: ((TaskItem, String) -> Unit)? = null
+    var onAddTask: ((String, String) -> Unit)? = null
+    var onEditTask: ((TaskItem, String, String) -> Unit)? = null
     var onDeleteTask: ((TaskItem) -> Unit)? = null
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
@@ -33,11 +34,12 @@ class TasksFragment : Fragment(), SnapshotFragment {
         taskAdapter = TaskRowAdapter(taskItems,
             onEdit = { item -> showEditTaskPicker(item) },
             onDelete = { item ->
-                MaterialAlertDialogBuilder(requireContext())
-                    .setTitle("删除任务")
-                    .setMessage("确定删除打卡时间点 ${item.time}？")
-                    .setPositiveButton("删除") { _, _ -> onDeleteTask?.invoke(item) }
-                    .setNegativeButton("取消", null).show()
+                showDestructiveConfirm(
+                    requireContext(),
+                    title = "删除任务",
+                    message = "确定删除打卡时间点 ${item.time}？",
+                    confirmText = "删除"
+                ) { onDeleteTask?.invoke(item) }
             })
         binding.rvTasks.layoutManager = LinearLayoutManager(requireContext())
         binding.rvTasks.adapter = taskAdapter
@@ -59,38 +61,58 @@ class TasksFragment : Fragment(), SnapshotFragment {
     }
 
     private fun showAddTaskPicker() {
-        showTimePicker(-1, "添加打卡时间") { time -> onAddTask?.invoke(time) }
+        showTaskDialog("添加打卡时间", "09:00:00", "") { time, name ->
+            onAddTask?.invoke(time, name)
+        }
     }
 
     private fun showEditTaskPicker(item: TaskItem) {
-        // 预填当前任务时间（HH:mm:ss → hour/minute）
-        val parts = item.time.split(":")
-        val initHour = parts.getOrNull(0)?.toIntOrNull() ?: 9
-        val initMinute = parts.getOrNull(1)?.toIntOrNull() ?: 0
-        showTimePicker(initHour * 60 + initMinute, "修改打卡时间（原 ${item.time}）") { newTime ->
-            onEditTask?.invoke(item, newTime)
+        showTaskDialog("修改打卡时间（原 ${item.time}）", item.time, item.name) { newTime, name ->
+            onEditTask?.invoke(item, newTime, name)
         }
     }
 
     /**
-     * @param presetMinutes 预选时间（分钟数），<0 表示不预填（用默认 9:00）
-     * @param onPick 回调返回格式化后的 HH:mm:ss 字符串
+     * 任务对话框：时间行可点击调起 MaterialTimePicker，另含可选名称输入框（多任务命名）。
+     * @param onPick 回调返回 (HH:mm:ss, 名称)
      */
-    private fun showTimePicker(presetMinutes: Int, title: String, onPick: (String) -> Unit) {
-        val builder = MaterialTimePicker.Builder()
-            .setTimeFormat(TimeFormat.CLOCK_24H)
-            .setTitleText(title)
-        if (presetMinutes >= 0) {
-            builder.setHour(presetMinutes / 60).setMinute(presetMinutes % 60)
-        } else {
-            builder.setHour(9).setMinute(0)
+    private fun showTaskDialog(title: String, initialTime: String, initialName: String, onPick: (String, String) -> Unit) {
+        val dlgBinding = DialogTaskBinding.inflate(LayoutInflater.from(requireContext()))
+        dlgBinding.tvTaskTimeValue.text = initialTime
+
+        // 时间行点击 → 时间选择器，选择后回填显示
+        fun pickTime() {
+            val parts = initialTime.split(":")
+            val initHour = parts.getOrNull(0)?.toIntOrNull() ?: 9
+            val initMinute = parts.getOrNull(1)?.toIntOrNull() ?: 0
+            val picker = MaterialTimePicker.Builder()
+                .setTimeFormat(TimeFormat.CLOCK_24H)
+                .setTitleText("选择打卡时间")
+                .setHour(initHour)
+                .setMinute(initMinute)
+                .build()
+            picker.addOnPositiveButtonClickListener {
+                dlgBinding.tvTaskTimeValue.text =
+                    String.format("%02d:%02d:00", picker.hour, picker.minute)
+            }
+            picker.show(parentFragmentManager, "task_time")
         }
-        val picker = builder.build()
-        picker.addOnPositiveButtonClickListener {
-            val time = String.format("%02d:%02d:00", picker.hour, picker.minute)
-            onPick(time)
-        }
-        picker.show(parentFragmentManager, "task_time")
+        dlgBinding.btnPickTime.setOnClickListener { pickTime() }
+        dlgBinding.etTaskName.setText(initialName)
+
+        UnifiedDialogKit.showForm(
+            ctx = requireContext(),
+            contentView = dlgBinding.root,
+            title = title,
+            positiveText = "保存",
+            negativeText = "取消",
+            onConfirm = {
+                val time = dlgBinding.tvTaskTimeValue.text.toString()
+                val name = dlgBinding.etTaskName.text?.toString()?.trim().orEmpty()
+                onPick(time, name)
+                true
+            }
+        )
     }
 
     override fun onDestroyView() {

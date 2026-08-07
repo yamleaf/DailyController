@@ -4,11 +4,11 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.TextView
 import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.yample.daily.controller.databinding.DialogMsgChannelBinding
+import com.yample.daily.controller.databinding.DialogSliderBinding
 import com.yample.daily.controller.databinding.FragmentSettingsBinding
 import com.yample.daily.controller.databinding.RowInfoBinding
 
@@ -29,12 +29,11 @@ class SettingsFragment : Fragment(), SnapshotFragment {
     /** 需求 1：消息渠道枚举（mc：0-邮件，1-企业微信） */
     var onChannelChange: ((Int) -> Unit)? = null
 
-    /** 解绑设备：入口由概览页移至设置页 */
-    var onUnbind: (() -> Unit)? = null
-
     companion object {
         /** 由「消息渠道」卡片单独承载的字段，不在通用设置列表里重复渲染 */
         private val MSG_KEYS = setOf("mc", "mt", "em", "ei", "wk", "ea")
+        /** 「任务每日循环」已移至概览页快捷操作（开启循环 / 关闭循环），不再在设置列表渲染 */
+        private val HIDDEN_KEYS = setOf("ar")
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
@@ -51,7 +50,6 @@ class SettingsFragment : Fragment(), SnapshotFragment {
         binding.rvSettings.layoutManager = LinearLayoutManager(requireContext())
         binding.rvSettings.adapter = settingAdapter
         binding.btnEditMsgChannel.setOnClickListener { showMsgChannelDialog() }
-        binding.btnUnbindDevice.setOnClickListener { onUnbind?.invoke() }
         snapshot?.let { render(it) }
     }
 
@@ -62,9 +60,10 @@ class SettingsFragment : Fragment(), SnapshotFragment {
 
     private fun render(s: DeviceSnapshot) {
         settingItems.clear()
-        settingItems.addAll(s.settings.filter { it.key !in MSG_KEYS })
+        settingItems.addAll(s.settings.filter { it.key !in MSG_KEYS && it.key !in HIDDEN_KEYS })
         settingAdapter.notifyDataSetChanged()
         renderMsgChannelCard(s)
+        renderStatuses(s)
     }
 
     // ===================== 需求 1：消息渠道镜像卡片 =====================
@@ -128,10 +127,13 @@ class SettingsFragment : Fragment(), SnapshotFragment {
             applyChannelGroups(dlgBinding.rbWx.isChecked)
         }
 
-        MaterialAlertDialogBuilder(requireContext())
-            .setTitle("配置消息渠道")
-            .setView(dlgBinding.root)
-            .setPositiveButton("保存") { _, _ ->
+        UnifiedDialogKit.showForm(
+            ctx = requireContext(),
+            contentView = dlgBinding.root,
+            title = "配置消息渠道",
+            positiveText = "保存",
+            negativeText = "取消",
+            onConfirm = {
                 val newChannel = if (dlgBinding.rbWx.isChecked) 1 else 0
                 val title = dlgBinding.etTitle.text?.toString()?.trim().orEmpty()
                 val wxKey = dlgBinding.etWxKey.text?.toString()?.trim().orEmpty()
@@ -152,9 +154,9 @@ class SettingsFragment : Fragment(), SnapshotFragment {
                     android.widget.Toast
                         .makeText(requireContext(), "没有需要下发的修改", android.widget.Toast.LENGTH_SHORT).show()
                 }
+                true
             }
-            .setNegativeButton("取消", null)
-            .show()
+        )
     }
 
     // ===================== 通用设置项 =====================
@@ -162,19 +164,17 @@ class SettingsFragment : Fragment(), SnapshotFragment {
     /** 需求 1：远程控制开关关掉后控制端会失联，二次确认，避免误触 */
     private fun handleToggle(item: SettingItem, on: Boolean) {
         if (item.key == "re" && !on) {
-            MaterialAlertDialogBuilder(requireContext())
-                .setTitle("关闭远程控制服务？")
-                .setMessage("关闭后被控端会断开 MQTT，本控制端将无法再远程操作该设备。\n\n可在被控端本机重新开启，或通过通知指令「DT#开启远程」远程恢复。")
-                .setPositiveButton("关闭") { _, _ -> onToggle?.invoke(item, false) }
-                .setNegativeButton("取消") { _, _ ->
+            UnifiedDialogKit.showWarning(
+                requireContext(),
+                "关闭远程控制服务？",
+                "关闭后被控端会断开 MQTT，本控制端将无法再远程操作该设备。\n\n可在被控端本机重新开启，或通过通知指令「DT#开启远程」远程恢复。",
+                confirmText = "关闭",
+                onConfirm = { onToggle?.invoke(item, false) },
+                onCancel = {
                     item.value = true
                     settingAdapter.notifyDataSetChanged()
                 }
-                .setOnCancelListener {
-                    item.value = true
-                    settingAdapter.notifyDataSetChanged()
-                }
-                .show()
+            )
             return
         }
         onToggle?.invoke(item, on)
@@ -184,44 +184,28 @@ class SettingsFragment : Fragment(), SnapshotFragment {
         val min = item.min ?: 0
         val max = item.max ?: 100
         val step = item.step ?: 1
+        val dlgBinding = DialogSliderBinding.inflate(LayoutInflater.from(requireContext()))
+        val refreshValue = { dlgBinding.tvSliderValue.text = "${item.value as? Int ?: min} ${unitFor(item.key)}" }
+        dlgBinding.tvSliderValue.text = "${item.value as? Int ?: min} ${unitFor(item.key)}"
+        dlgBinding.slider.apply {
+            valueFrom = min.toFloat()
+            valueTo = max.toFloat()
+            stepSize = step.toFloat()
+            value = ((item.value as? Int) ?: min).toFloat().coerceIn(min.toFloat(), max.toFloat())
+            addOnChangeListener { _, value, _ ->
+                item.value = value.toInt()
+                refreshValue()
+            }
+        }
         MaterialAlertDialogBuilder(requireContext())
             .setTitle(item.label)
-            .setView(createSliderView(item, min, max, step))
+            .setView(dlgBinding.root)
             .setPositiveButton("保存") { _, _ ->
                 val v = item.value as? Int ?: min
                 onIntChange?.invoke(item, v)
             }
             .setNegativeButton("取消", null)
             .show()
-    }
-
-    private fun createSliderView(item: SettingItem, min: Int, max: Int, step: Int): View {
-        val ctx = requireContext()
-        val container = android.widget.LinearLayout(ctx).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
-            setPadding(48, 24, 48, 24)
-        }
-        val current = (item.value as? Int) ?: min
-        val valueTv = TextView(ctx).apply {
-            text = "$current ${unitFor(item.key)}"
-            textSize = 18f
-            setTextColor(ctx.getColor(R.color.md_primary))
-            gravity = android.view.Gravity.CENTER
-        }
-        val slider = com.google.android.material.slider.Slider(ctx).apply {
-            valueFrom = min.toFloat()
-            valueTo = max.toFloat()
-            stepSize = step.toFloat()
-            value = current.toFloat().coerceIn(min.toFloat(), max.toFloat())
-            addOnChangeListener { _, value, _ ->
-                val intVal = value.toInt()
-                item.value = intVal
-                valueTv.text = "$intVal ${unitFor(item.key)}"
-            }
-        }
-        container.addView(valueTv)
-        container.addView(slider)
-        return container
     }
 
     private fun unitFor(key: String): String = when (key) {
@@ -231,6 +215,33 @@ class SettingsFragment : Fragment(), SnapshotFragment {
         "rh" -> "时"
         "lb" -> "%"
         else -> ""
+    }
+
+    // ===================== 系统权限状态（由「权限」页合并） =====================
+
+    /** 渲染被控端系统权限状态（悬浮窗 / 通知监听 / 截屏 / 无障碍等，只读） */
+    private fun renderStatuses(s: DeviceSnapshot) {
+        binding.layoutStatuses.removeAllViews()
+        if (s.statuses.isEmpty()) {
+            binding.cardStatuses.visibility = View.GONE
+            return
+        }
+        binding.cardStatuses.visibility = View.VISIBLE
+        s.statuses.forEach { st ->
+            val row = RowInfoBinding.inflate(LayoutInflater.from(requireContext()))
+            row.tvRowLabel.text = st.label
+            row.tvRowValue.text = st.value
+            row.tvRowValue.setTextColor(statusColor(st.value))
+            binding.layoutStatuses.addView(row.root)
+        }
+    }
+
+    private fun statusColor(value: String): Int {
+        return requireContext().getColor(when {
+            value.contains("已获取") || value.contains("已开启") || value == "正常" || value.contains("截屏") || value.contains("通知") -> R.color.md_tertiary
+            value.contains("未") || value == "已授权但断开" -> R.color.md_error
+            else -> R.color.md_onSurface
+        })
     }
 
     override fun onDestroyView() {

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 空状态「立即扫码」脉冲动画：轻微缩放循环，强化引导 -->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:repeatCount="infinite"
+    android:repeatMode="reverse">
+    <scale
+        android:fromXScale="1.0"
+        android:fromYScale="1.0"
+        android:toXScale="1.05"
+        android:toYScale="1.05"
+        android:pivotX="50%"
+        android:pivotY="50%"
+        android:duration="1000"
+        android:interpolator="@android:anim/accelerate_decelerate_interpolator" />
+</set>
