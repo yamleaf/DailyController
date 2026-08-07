@@ -430,9 +430,11 @@ android:paddingStart="16dp"
                         android:layout_marginStart="5dp"
                         android:layout_weight="1"
                         android:text="考勤记录"
+                        android:textColor="@color/md_onSurfaceVariant"
                         android:stateListAnimator="@animator/btn_press_scale"
+                        app:backgroundTint="@color/md_surfaceVariant"
                         app:icon="@drawable/ic_scan"
-                        app:iconTint="@color/md_primary" />
+                        app:iconTint="@color/md_onSurfaceVariant" />
                 </LinearLayout>
 
                 <LinearLayout
@@ -452,8 +454,9 @@ android:paddingStart="16dp"
                         android:layout_weight="1"
                         android:text="执行任务"
                         android:stateListAnimator="@animator/btn_press_scale"
+                        app:backgroundTint="@color/md_tertiary"
                         app:icon="@drawable/ic_power"
-                        app:iconTint="@color/md_onPrimary" />
+                        app:iconTint="@color/md_onTertiary" />
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btnActStop"
@@ -480,15 +483,16 @@ android:paddingStart="16dp"
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btnActLoopOn"
-                        style="@style/Widget.Material3.Button.TonalButton"
+                        style="@style/Widget.Material3.Button"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_marginEnd="5dp"
                         android:layout_weight="1"
                         android:text="开启循环"
                         android:stateListAnimator="@animator/btn_press_scale"
+                        app:backgroundTint="@color/md_teal"
                         app:icon="@drawable/ic_power"
-                        app:iconTint="@color/md_primary" />
+                        app:iconTint="@color/white" />
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btnActLoopOff"
