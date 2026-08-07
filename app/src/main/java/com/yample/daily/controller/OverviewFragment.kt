@@ -23,7 +23,7 @@ import kotlin.collections.ArrayDeque
 enum class SnapshotHint { NONE, WAITING, FAILED, DISABLED }
 
 /** B5：最近指令回执（label=指令名，result=回执结果，ts=回执时间戳） */
-data class RecentCommand(val label: String, val result: String, val ts: Long)
+data class RecentCommand(val label: String?, val result: String?, val ts: Long)
 
 class OverviewFragment : Fragment(), SnapshotFragment {
 
@@ -69,7 +69,9 @@ class OverviewFragment : Fragment(), SnapshotFragment {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        recentCmdsKey = "recent_cmds_${requireActivity().intent.getStringExtra("deviceId") ?: "unknown"}"
+        // v2：升级时丢弃旧格式缓存——旧包混淆字段名不一致会把 label/result 反序列化成 null，
+        // 渲染「最近指令」时 NPE 闪退（且 R8 会按「字段仅经构造函数写入」优化掉空值保护，见 f7e4833 同类问题）
+        recentCmdsKey = "recent_cmds_v2_${requireActivity().intent.getStringExtra("deviceId") ?: "unknown"}"
         restoreRecentCmds()
         binding.swipeRefresh.setOnRefreshListener { onSwipeRefresh() }
         binding.btnRefresh.setOnClickListener { triggerRefresh() }
@@ -297,7 +299,11 @@ class OverviewFragment : Fragment(), SnapshotFragment {
             val type = object : com.google.gson.reflect.TypeToken<ArrayList<RecentCommand>>() {}.type
             val list = com.google.gson.Gson().fromJson<ArrayList<RecentCommand>>(json, type)
             recentCmds.clear()
-            list.forEach { recentCmds.addLast(it) }
+            // 防御：旧包/混淆字段名不一致时反序列化出的 label/result 可能为 null，渲染会 NPE 闪退。
+            // 过滤脏条目，若确实丢了数据则回写干净缓存（自愈）。
+            val clean = list.filter { it.label != null && it.result != null }
+            clean.forEach { recentCmds.addLast(it) }
+            if (clean.size != list.size) saveRecentCmds()
             drawRecentCmds()
         } catch (_: Exception) { }
     }
@@ -322,14 +328,15 @@ class OverviewFragment : Fragment(), SnapshotFragment {
         }
         recentCmds.forEach { cmd ->
             val row = RowInfoBinding.inflate(LayoutInflater.from(requireContext()))
-            row.tvRowLabel.text = cmd.label
+            row.tvRowLabel.text = cmd.label ?: "未知指令"
             val timeStr = SimpleDateFormat("HH:mm", Locale.CHINA).format(Date(cmd.ts))
-            row.tvRowValue.text = "${cmd.result} · $timeStr"
+            val result = cmd.result ?: ""
+            row.tvRowValue.text = "$result · $timeStr"
             row.tvRowValue.setTextColor(requireContext().getColor(
                 when {
-                    cmd.result.contains("成功") -> R.color.md_tertiary
-                    cmd.result.contains("失败") || cmd.result.contains("未") || cmd.result.contains("过期")
-                        || cmd.result.contains("重复") || cmd.result.contains("不一致") -> R.color.md_error
+                    result.contains("成功") -> R.color.md_tertiary
+                    result.contains("失败") || result.contains("未") || result.contains("过期")
+                        || result.contains("重复") || result.contains("不一致") -> R.color.md_error
                     else -> R.color.md_onSurface
                 }
             ))
