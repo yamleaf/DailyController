@@ -35,6 +35,15 @@
             android:fontFamily="monospace" />
 
         <TextView
+            android:id="@+id/tvTaskName"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="1dp"
+            android:textColor="@color/md_onSurfaceVariant"
+            android:textSize="11sp"
+            android:visibility="gone" />
+
+        <TextView
             android:id="@+id/tvTaskSub"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
