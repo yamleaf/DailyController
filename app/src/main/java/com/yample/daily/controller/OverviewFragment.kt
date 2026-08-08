@@ -361,7 +361,7 @@ class OverviewFragment : Fragment(), SnapshotFragment {
     }
 
     /** B5：绘制电池曲线 sparkline + 趋势摘要 + 耗尽预测 */
-    private fun drawBatteryTrend(series: List<BatteryPoint>) {
+    private fun drawBatteryTrend(series: List<BatteryPoint>, currentRuntimeBattery: Int = -1) {
         if (_binding == null) return
         if (series.size < 2) {
             binding.batterySpark.setData(emptyList())
@@ -377,7 +377,9 @@ class OverviewFragment : Fragment(), SnapshotFragment {
             if (drop > 0) "（掉电 ${drop}%）" else "（电量平稳）"
 
         // 电量耗尽预测：基于最近采样点的消耗速度，推算当前电量耗尽的大致时间
-        val predictText = batteryPredictText(series, last)
+        // 使用运行时实时电量而非采样点末值，避免采样滞后导致日期计算偏差
+        val level = if (currentRuntimeBattery >= 0) currentRuntimeBattery else last
+        val predictText = batteryPredictText(series, level)
         if (predictText.isBlank()) {
             binding.layoutBatteryPredict.visibility = View.GONE
         } else {
@@ -408,9 +410,15 @@ class OverviewFragment : Fragment(), SnapshotFragment {
 
         // 当前电量耗尽所需小时数
         val hoursToEmpty = currentLevel / ratePerHour
-        val emptyMs = System.currentTimeMillis() + (hoursToEmpty * 3600_000).toLong()
-        val timeText = java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.getDefault())
-            .format(java.util.Date(emptyMs))
+        // 用 Calendar 计算预计耗尽时间，确保日期进位准确（SimpleDateFormat+Date 在某些 locale 下可能出问题）
+        val cal = java.util.Calendar.getInstance().apply {
+            add(java.util.Calendar.MINUTE, (hoursToEmpty * 60).toInt())
+        }
+        val timeText = String.format("%02d-%02d %02d:%02d",
+            cal.get(java.util.Calendar.MONTH) + 1,
+            cal.get(java.util.Calendar.DAY_OF_MONTH),
+            cal.get(java.util.Calendar.HOUR_OF_DAY),
+            cal.get(java.util.Calendar.MINUTE))
         return when {
             currentLevel <= 20 -> "⚠️ 电量仅剩 $currentLevel%，预计约 ${"%.1f".format(hoursToEmpty)} 小时后（$timeText）耗尽"
             else -> "预计 ${"%.1f".format(hoursToEmpty)} 小时后（约 $timeText）电量耗尽"
@@ -446,7 +454,7 @@ class OverviewFragment : Fragment(), SnapshotFragment {
         binding.tvBatteryCharging.text = "充电：${s.runtime["charging"] ?: "--"} · ${s.runtime["temperature"] ?: ""}"
 
         // B5：电池曲线（跨 render 保留）
-        drawBatteryTrend(s.batterySeries)
+        drawBatteryTrend(s.batterySeries, battery)
 
         setChip(binding.chipForeground, "前台服务", s.runtime["foregroundRunning"] == "true")
         setChip(binding.chipScheduler, "任务调度", s.runtime["schedulerRunning"] == "true")
