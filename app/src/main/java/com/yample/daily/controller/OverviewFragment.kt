@@ -393,7 +393,7 @@ class OverviewFragment : Fragment(), SnapshotFragment {
 
         setChip(binding.chipForeground, "前台服务", s.runtime["foregroundRunning"] == "true")
         setChip(binding.chipScheduler, "任务调度", s.runtime["schedulerRunning"] == "true")
-        setChip(binding.chipPowerSave, "省电模式", s.runtime["powerSaveMode"] == "true")
+        setChip(binding.chipPowerSave, "节能模式", s.runtime["powerSaveMode"] == "true")
         setChip(binding.chipPseudo, "伪息屏", s.runtime["forcePseudoMask"] == "true")
         setChip(binding.chipWifi, "WiFi", s.runtime["wifi"] == "已连接")
         setChip(binding.chipBluetooth, "蓝牙", s.runtime["bluetooth"] == "已开启")

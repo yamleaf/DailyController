@@ -97,6 +97,8 @@ class DeviceFragment : Fragment(), SnapshotFragment {
         setRow(binding.rowConnQuality, "连接质量", connQuality)
 
         setRow(binding.rowModel, "型号", s.device["model"] ?: "--")
+        setRow(binding.rowScreenState, "手机状态", s.runtime["screenState"] ?: "--")
+        setRow(binding.rowProtoVer, "协议版本", s.device["protoVer"] ?: "—")
         setRow(binding.rowBrand, "品牌/厂商", "${s.device["brand"] ?: "--"} ${s.device["manufacturer"] ?: ""}".trim())
         setRow(binding.rowAndroid, "系统版本", "Android ${s.device["androidVersion"] ?: "?"} (API ${s.device["sdk"] ?: "?"})")
         setRow(binding.rowApp, "应用版本", s.device["appVersion"] ?: "--")
