@@ -118,17 +118,28 @@ class DeviceControlActivity : AppCompatActivity() {
      * 导致先回来的 ACK 关联到错误的指令名（「最近指令」错乱）。按 rid 精确关联可根治。
      * 用 LinkedHashMap 并限长，避免 ACK 丢失时无限增长。
      */
-    private val pendingCommandLabels = LinkedHashMap<String, String>()
+    private val pendingCommands = mutableMapOf<String, PendingCommand>()
+
+    private data class PendingCommand(
+        val field: String,
+        val value: PacketValue,
+        val label: String
+    )
 
     /** 当前处于「下发中」的一次性动作 rid：只有它的回执才应解除快捷按钮置灰 */
     private var pendingActionRid: String? = null
 
     /** 登记 rid→指令名；ACK 丢失时淘汰最早记录，避免映射无限增长 */
-    private fun rememberCommandLabel(rid: String, label: String) {
-        if (pendingCommandLabels.size >= 32) {
-            pendingCommandLabels.keys.firstOrNull()?.let { pendingCommandLabels.remove(it) }
+    private fun rememberCommandLabel(rid: String, label: String, field: String? = null, value: PacketValue? = null) {
+        if (field != null && value != null) {
+            pendingCommands[rid] = PendingCommand(field, value, label)
+        } else if (label.isNotBlank()) {
+            // 兼容旧调用：仅存 label
+            pendingCommands[rid] = PendingCommand("", PacketValue.StringValue(""), label)
         }
-        pendingCommandLabels.put(rid, label)
+        if (pendingCommands.size > 32) {
+            pendingCommands.keys.firstOrNull()?.let { pendingCommands.remove(it) }
+        }
     }
 
     private lateinit var overviewFragment: OverviewFragment
@@ -735,7 +746,17 @@ class DeviceControlActivity : AppCompatActivity() {
                     // 推送 tasks/settings/statuses/runtime），onPush 已按 delta 覆盖合并本地缓存并刷新 UI。
                     // 这里若再 forceRefreshSnapshot() 查全量：① 与增量机制重复，违背「增量即最终态」；
                     // ② 全量查询命中被控端 30s 缓存可能返回旧值，把刚更新的增量覆盖回去（灰→蓝→灰）。
-                    "SUCCESS" -> Unit
+                    "SUCCESS" -> {
+                        // ACK 成功：把下发的字段值同步到本地快照并刷新 UI
+                        val ackRid2 = packet?.rid
+                        ackRid2?.let { rid ->
+                            pendingCommands.remove(rid)?.let { cmd ->
+                                if (cmd.field.isNotBlank()) {
+                                    applyAckOptimisticUpdate(cmd.field, cmd.value)
+                                }
+                            }
+                        }
+                    }
                     "TASK_OK" -> Toast.makeText(this, "任务已更新", Toast.LENGTH_SHORT).show()
                     // 以下失败回执一律补拉一次快照：本地 UI（Switch/任务列表）在下发时已乐观翻转，
                     // 若被控端拒绝而不回滚，本地显示会与被控端真实状态长期不一致。
@@ -767,7 +788,7 @@ class DeviceControlActivity : AppCompatActivity() {
                 }
                 // 按 rid 精确关联指令名，避免连续下发时「最近指令」张冠李戴；取不到再退回单变量兜底
                 val ackRid = packet?.rid
-                val label = ackRid?.let { pendingCommandLabels.remove(it) } ?: lastCommandLabel
+                val label = ackRid?.let { pendingCommands.remove(it)?.label } ?: lastCommandLabel
                 addRecentCommand(label, ackFriendly(result))
                 // D2：只有「当前下发中的一次性动作」自己的回执才解除置灰并弹 Snackbar。
                 // 原实现无条件解锁，设置/任务类回执会把动作按钮提前解锁、Snackbar 也会错弹。
@@ -1153,20 +1174,15 @@ val calendar = CalendarSnapshot(
         if (device.sessionSecret.isBlank()) {
             Toast.makeText(this, "尚未完成配对，无法下发指令", Toast.LENGTH_SHORT).show(); return
         }
-        // 断线时 mqttClient 为 null，mqttClient?.publish(...) 会「静默 no-op」——不抛异常、不进 catch、
-        // 不给任何提示，用户看着 Switch 已翻转以为改成功了，实际什么都没发出去，配额还照样计数。
-        // 必须像 sendAction 那样显式拦截，并回滚 UI 到快照真实值。
         if (mqttClient?.isConnected != true) {
             Toast.makeText(this, "MQTT 未连接，设置未下发", Toast.LENGTH_SHORT).show()
             refreshCurrentFragment()
             return
         }
-        // 乐观更新：立即在本地快照中更新该设置项的值，避免用户等待被控端回推快照
-        applyOptimisticUpdate(field, value)
         lastCommandLabel = "修改设置"
         val ts = System.currentTimeMillis()
         val rid = UUID.randomUUID().toString()
-        rememberCommandLabel(rid, lastCommandLabel)
+        rememberCommandLabel(rid, "修改设置", field, value)
         val (type, vStr) = when (value) {
             is PacketValue.BooleanValue -> "b" to value.b.toString()
             is PacketValue.IntValue -> "i" to value.i.toString()
@@ -1174,15 +1190,14 @@ val calendar = CalendarSnapshot(
         }
         val sign = MqttSigner.sign(device.sessionSecret, device.deviceId, ts, rid, field, type, vStr, "U")
         val packet = MqttPacket("U", field, value, rid, ts, sign)
-        // 与 sendQuery 同理：QoS1 publish 会同步等待 PUBACK，放主线程会 ANR
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 mqttClient?.publish("${MqttPacket.TOPIC_PREFIX}/${device.deviceId}/cmd",
                     MqttMessage(gson.toJson(packet).toByteArray()).apply { qos = 1 })
-                bumpQuota(1, 0) // 只有确实发出去才计配额，避免断线时虚增
+                bumpQuota(1, 0)
             } catch (e: MqttException) {
                 e.printStackTrace()
-                pendingCommandLabels.remove(rid)
+                pendingCommands.remove(rid)
                 runOnUiThread {
                     Toast.makeText(this@DeviceControlActivity, "指令发送失败", Toast.LENGTH_SHORT).show()
                     refreshCurrentFragment()
@@ -1192,11 +1207,10 @@ val calendar = CalendarSnapshot(
     }
 
     /**
-     * 乐观更新：下发设置指令后立即在本地 currentSnapshot 中同步该字段值并刷新 UI，
-     * 不等被控端回推快照，避免「设置页数字/文字不跟着变，切 tab 才刷新」的观感问题。
-     * 被控端后续回推的真实快照会覆盖此乐观值。
+     * ACK 成功后的乐观更新：将下发的字段值同步到本地 currentSnapshot 并刷新 UI。
+     * 仅在收到 SUCCESS ACK 时调用，避免因网络延迟导致 UI 与被控端状态不一致。
      */
-    private fun applyOptimisticUpdate(field: String, value: PacketValue) {
+    private fun applyAckOptimisticUpdate(field: String, value: PacketValue) {
         val snap = currentSnapshot ?: return
         val newValue: Any = when (value) {
             is PacketValue.BooleanValue -> value.b
@@ -1260,7 +1274,7 @@ val calendar = CalendarSnapshot(
                 bumpQuota(1, 0)
             } catch (e: MqttException) {
                 e.printStackTrace()
-                pendingCommandLabels.remove(rid)
+                pendingCommands.remove(rid)
                 runOnUiThread {
                     Toast.makeText(this@DeviceControlActivity, "指令发送失败", Toast.LENGTH_SHORT).show()
                     refreshCurrentFragment()
@@ -1316,7 +1330,7 @@ val calendar = CalendarSnapshot(
                 }
             } catch (e: MqttException) {
                 e.printStackTrace()
-                pendingCommandLabels.remove(rid)
+                pendingCommands.remove(rid)
                 runOnUiThread {
                     if (pendingActionRid == rid) pendingActionRid = null
                     overviewFragment.setActionsBusy(false)
