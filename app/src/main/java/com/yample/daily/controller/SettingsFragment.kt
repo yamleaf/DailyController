@@ -247,7 +247,7 @@ class SettingsFragment : Fragment(), SnapshotFragment {
         "tr" -> "分"
         "rh" -> "时"
         "lb" -> "%"
-        "bw" -> "时"
+        "bw" -> "分"
         "bs" -> "段"
         "br" -> "时"
         "bd" -> "时"
