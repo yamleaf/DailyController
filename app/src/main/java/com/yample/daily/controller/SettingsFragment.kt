@@ -219,6 +219,8 @@ class SettingsFragment : Fragment(), SnapshotFragment {
         "lb" -> "%"
         "bw" -> "时"
         "bs" -> "段"
+        "br" -> "时"
+        "bd" -> "时"
         else -> ""
     }
 

@@ -22,7 +22,6 @@ class SettingAdapter(
         "rt" to R.drawable.ic_timer,
         "ga" to R.drawable.ic_device,
         "bh" to R.drawable.ic_device,
-        "ka" to R.drawable.ic_power,
         "tm" to R.drawable.ic_timer,
         "rh" to R.drawable.ic_timer,
         "tr" to R.drawable.ic_timer,
@@ -77,6 +76,8 @@ class SettingAdapter(
         "lb" -> "%"
         "bw" -> "时"
         "bs" -> "段"
+        "br" -> "时"
+        "bd" -> "时"
         else -> ""
     }
 

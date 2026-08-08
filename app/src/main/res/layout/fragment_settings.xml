@@ -124,7 +124,7 @@
                 android:layout_height="wrap_content"
                 android:nestedScrollingEnabled="false"
                 android:paddingTop="6dp"
-                android:paddingBottom="100dp" />
+                android:paddingBottom="12dp" />
 
         </com.google.android.material.card.MaterialCardView>
 
