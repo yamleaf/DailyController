@@ -166,7 +166,7 @@
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="被控端低电量、充电状态、电量智能预警等事件通知"
+                                android:text="被控设备事件通知监听"
                                 android:textAppearance="@style/TextAppearance.Material3.BodySmall"
                                 android:textColor="@color/md_onSurfaceVariant" />
                         </LinearLayout>
