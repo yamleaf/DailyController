@@ -656,7 +656,7 @@ class DeviceControlActivity : AppCompatActivity() {
             // 设备显式发布离线（含 lastWill）：可信，直接判离线（红灯）
             // 仅在「在线→离线」真实转跳时记录上次离线时间，避免 retained 离线重复到达反复刷新
             if (deviceWasOnline == true) {
-                OfflineMonitorService.recordLastOffline(this)
+                OfflineMonitorService.recordLastOffline(this, device.name, device.deviceId)
             }
             deviceWasOnline = false
             runOnUiThread { setConnStatus("设备离线", false) }

@@ -88,10 +88,10 @@ class AppSettingsActivity : AppCompatActivity() {
     }
 
     /** 读取离线监测服务记录的最近离线时间，格式化展示；无记录则提示暂无。
-     * 近期用相对时间（刚刚 / x分钟前 / 今天 / 昨天），更早回退到「MM-dd HH:mm」。 */
+     * 近期用相对时间（刚刚 / x分钟前 / 今天 / 昨天），更早回退到「MM-dd HH:mm」。
+     * 从所有设备中取最新一条，同时显示设备名，便于在多设备场景下区分。 */
     private fun formatLastOffline(): String {
-        val ts = getSharedPreferences(OfflineMonitorService.PREFS, Context.MODE_PRIVATE)
-            .getLong(OfflineMonitorService.KEY_LAST_OFFLINE_MS, 0L)
+        val (deviceName, ts) = OfflineMonitorService.latestOffline(this)
         if (ts == 0L) return "上次离线时间：暂无记录"
         val now = System.currentTimeMillis()
         val diff = now - ts
@@ -117,7 +117,7 @@ class AppSettingsActivity : AppCompatActivity() {
                 }
             }
         }
-        return "上次离线时间：$prefix"
+        return if (deviceName.isNotBlank()) "上次离线：$deviceName · $prefix" else "上次离线时间：$prefix"
     }
 
     override fun onResume() {

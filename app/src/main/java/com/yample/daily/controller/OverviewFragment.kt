@@ -403,7 +403,7 @@ class OverviewFragment : Fragment(), SnapshotFragment {
         // 当前电量耗尽所需小时数
         val hoursToEmpty = currentLevel / ratePerHour
         val emptyMs = System.currentTimeMillis() + (hoursToEmpty * 3600_000).toLong()
-        val timeText = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+        val timeText = java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.getDefault())
             .format(java.util.Date(emptyMs))
         return when {
             currentLevel <= 20 -> "⚠️ 电量仅剩 $currentLevel%，预计约 ${"%.1f".format(hoursToEmpty)} 小时后（$timeText）耗尽"

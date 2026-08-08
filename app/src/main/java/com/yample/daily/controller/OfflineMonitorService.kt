@@ -46,6 +46,7 @@ class OfflineMonitorService : Service() {
         const val PREFS = "daily_app"
         const val KEY_ENABLED = "notify_offline"
         const val KEY_LAST_OFFLINE_MS = "last_offline_ms"
+        const val KEY_LAST_OFFLINE_DEVICE = "last_offline_device"
 
         fun isEnabled(context: Context): Boolean =
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_ENABLED, false)
@@ -63,14 +64,41 @@ class OfflineMonitorService : Service() {
         }
 
         /**
-         * 记录「最近一次离线时间」（全局，取最新值）。与「离线通知」开关解耦——
-         * 即便未开启通知，设备页 LWT 检测到离线也可写入，保证设置页展示真实最近离线时间。
-         * 守卫：仅当 ts 比已存值更新才覆盖，避免多设备/重复到达时把时间戳改旧。
+         * 记录「最近一次离线时间」（按设备分开存储，同一设备只保留最后一次离线）。
+         * 与「离线通知」开关解耦——即便未开启通知，设备页 LWT 检测到离线也可写入。
+         * 设置页展示「最近一次离线」时读取所有设备里的最新一条，并显示对应设备名。
          */
-        fun recordLastOffline(context: Context, ts: Long = System.currentTimeMillis()) {
+        fun recordLastOffline(context: Context, deviceName: String, deviceId: String, ts: Long = System.currentTimeMillis()) {
             val sp = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            val prev = sp.getLong(KEY_LAST_OFFLINE_MS, 0L)
-            if (ts > prev) sp.edit().putLong(KEY_LAST_OFFLINE_MS, ts).apply()
+            val key = keyFor(deviceId)
+            val prev = sp.getLong(key, 0L)
+            // 同一设备只保留最后一次（更新的时间戳才覆盖）
+            if (ts > prev) {
+                sp.edit()
+                    .putLong(key, ts)
+                    .putString(nameKeyFor(deviceId), deviceName)
+                    .apply()
+            }
+        }
+
+        private fun keyFor(deviceId: String) = "last_offline_ms_$deviceId"
+        private fun nameKeyFor(deviceId: String) = "last_offline_name_$deviceId"
+
+        /** 读取所有设备中「最近一次离线」的最新一条（时间戳最大者），返回 (设备名, 时间戳) */
+        fun latestOffline(context: Context): Pair<String, Long> {
+            val sp = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            var bestName = ""
+            var bestTs = 0L
+            sp.all.forEach { (k, v) ->
+                if (k.startsWith("last_offline_ms_") && v is Long) {
+                    if (v > bestTs) {
+                        bestTs = v
+                        val deviceId = k.removePrefix("last_offline_ms_")
+                        bestName = sp.getString(nameKeyFor(deviceId), "") ?: ""
+                    }
+                }
+            }
+            return bestName to bestTs
         }
     }
 
@@ -213,7 +241,7 @@ class OfflineMonitorService : Service() {
 
     private fun notifyOffline(device: DeviceRecord) {
         // 记录最近一次离线时间（在线→离线的真实转跳，由 runOnce 的 prev/now 判定），供设置页展示
-        recordLastOffline(this)
+        recordLastOffline(this, device.name, device.deviceId)
         notifyAlert(device.deviceId, "设备离线", "${device.name} 已离线，请检查其网络与后台状态")
     }
 
