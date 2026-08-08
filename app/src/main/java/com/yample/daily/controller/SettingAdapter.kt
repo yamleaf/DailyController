@@ -74,6 +74,9 @@ class SettingAdapter(
         "ot" -> "秒"
         "tr" -> "分"
         "rh" -> "时"
+        "lb" -> "%"
+        "bw" -> "时"
+        "bs" -> "段"
         else -> ""
     }
 
