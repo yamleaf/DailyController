@@ -1096,7 +1096,9 @@ class DeviceControlActivity : AppCompatActivity() {
                 writable = true,
                 min = o.get("min")?.takeIf { it.isJsonPrimitive }?.asInt,
                 max = o.get("max")?.takeIf { it.isJsonPrimitive }?.asInt,
-                step = o.get("step")?.takeIf { it.isJsonPrimitive }?.asInt
+                step = o.get("step")?.takeIf { it.isJsonPrimitive }?.asInt,
+                options = o.getAsJsonArray("options")?.mapNotNull { if (it.isJsonPrimitive) it.asInt else null }
+                    ?.takeIf { it.isNotEmpty() }
             ))
         }
         val statuses = mutableListOf<StatusItem>()

@@ -729,6 +729,16 @@ android:paddingStart="16dp"
                     android:text="—"
                     android:textColor="@color/md_onSurfaceVariant"
                     android:textSize="12sp" />
+
+                <TextView
+                    android:id="@+id/tvBatteryPredict"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text=""
+                    android:textColor="@color/md_tertiary"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 

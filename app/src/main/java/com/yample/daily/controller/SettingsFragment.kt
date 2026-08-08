@@ -211,12 +211,49 @@ class SettingsFragment : Fragment(), SnapshotFragment {
     }
 
     private fun showSliderIfNeeded(item: SettingItem) {
+        val dlgBinding = DialogSliderBinding.inflate(LayoutInflater.from(requireContext()))
+        val unit = unitFor(item.key)
+        val opts = item.options
+        // 离散档位滑块：与被控端伪息屏延迟档位完全一致（非线性，时间越大间隔越大）
+        if (opts != null && opts.isNotEmpty()) {
+            val current = (item.value as? Int) ?: opts[0]
+            var index = 0
+            var bestDiff = Int.MAX_VALUE
+            opts.forEachIndexed { i, v ->
+                val diff = kotlin.math.abs(v - current)
+                if (diff < bestDiff) { bestDiff = diff; index = i }
+            }
+            dlgBinding.tvSliderValue.text = "${opts[index]} $unit"
+            dlgBinding.slider.apply {
+                valueFrom = 0f
+                valueTo = (opts.size - 1).toFloat()
+                stepSize = 1f
+                value = index.toFloat()
+                addOnChangeListener { _, value, _ ->
+                    dlgBinding.tvSliderValue.text = "${opts[value.toInt().coerceIn(0, opts.lastIndex)]} $unit"
+                }
+            }
+            UnifiedDialogKit.showForm(
+                ctx = requireContext(),
+                contentView = dlgBinding.root,
+                title = item.label,
+                positiveText = "保存",
+                negativeText = "取消",
+                onConfirm = {
+                    val idx = dlgBinding.slider.value.toInt().coerceIn(0, opts.lastIndex)
+                    val v = opts[idx]
+                    item.value = v
+                    onIntChange?.invoke(item, v)
+                    true
+                }
+            )
+            return
+        }
         val min = item.min ?: 0
         val max = item.max ?: 100
         val step = item.step ?: 1
-        val dlgBinding = DialogSliderBinding.inflate(LayoutInflater.from(requireContext()))
-        val refreshValue = { dlgBinding.tvSliderValue.text = "${item.value as? Int ?: min} ${unitFor(item.key)}" }
-        dlgBinding.tvSliderValue.text = "${item.value as? Int ?: min} ${unitFor(item.key)}"
+        val refreshValue = { dlgBinding.tvSliderValue.text = "${item.value as? Int ?: min} $unit" }
+        dlgBinding.tvSliderValue.text = "${item.value as? Int ?: min} $unit"
         dlgBinding.slider.apply {
             valueFrom = min.toFloat()
             valueTo = max.toFloat()

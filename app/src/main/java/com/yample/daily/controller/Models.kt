@@ -40,7 +40,8 @@ data class SettingItem(
     val writable: Boolean,
     val min: Int? = null,
     val max: Int? = null,
-    val step: Int? = null
+    val step: Int? = null,
+    val options: List<Int>? = null   // 离散档位（如伪息屏延迟）；存在时滑块按档位索引映射，否则用 min/max/step 连续滑块
 )
 
 data class StatusItem(

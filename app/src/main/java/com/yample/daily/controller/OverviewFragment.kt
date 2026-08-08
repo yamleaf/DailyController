@@ -360,12 +360,13 @@ class OverviewFragment : Fragment(), SnapshotFragment {
         }
     }
 
-    /** B5：绘制电池曲线 sparkline + 趋势摘要 */
+    /** B5：绘制电池曲线 sparkline + 趋势摘要 + 耗尽预测 */
     private fun drawBatteryTrend(series: List<BatteryPoint>) {
         if (_binding == null) return
         if (series.size < 2) {
             binding.batterySpark.setData(emptyList())
             binding.tvBatteryTrend.text = "数据不足：被控端需常驻运行以采样电量（近 12 小时）"
+            binding.tvBatteryPredict.text = ""
             return
         }
         binding.batterySpark.setData(series.map { it.ts to it.level })
@@ -374,6 +375,40 @@ class OverviewFragment : Fragment(), SnapshotFragment {
         val drop = (first - last).coerceAtLeast(0)
         binding.tvBatteryTrend.text = "近 12 小时：$first% → $last%" +
             if (drop > 0) "（掉电 ${drop}%）" else "（电量平稳）"
+
+        // 电量耗尽预测：基于最近采样点的消耗速度，推算当前电量耗尽的大致时间
+        binding.tvBatteryPredict.text = batteryPredictText(series, last)
+    }
+
+    /**
+     * 计算电量耗尽预测文案。
+     * 用最近的一段放电数据（排除充电段）拟合掉电速率（%/小时），
+     * 再按当前电量推算预计耗尽时间。数据不足/正在充电时返回空串。
+     */
+    private fun batteryPredictText(series: List<BatteryPoint>, currentLevel: Int): String {
+        if (series.size < 2) return ""
+        // 找最后一次充电之后的连续放电段（若存在充电点，排除其之前数据）
+        val sorted = series.sortedBy { it.ts }
+        val lastChargeIdx = sorted.indexOfLast { it.level >= 99 && it.ts > sorted.first().ts }
+        val discharge = if (lastChargeIdx >= 0) sorted.subList(lastChargeIdx, sorted.size) else sorted
+        if (discharge.size < 2) return ""
+
+        val firstP = discharge.first()
+        val lastP = discharge.last()
+        val elapsedHours = (lastP.ts - firstP.ts) / 3600_000.0
+        if (elapsedHours < 0.5) return "（数据不足，暂无法预测耗尽时间）"
+        val ratePerHour = (firstP.level - lastP.level) / elapsedHours  // %/h
+        if (ratePerHour <= 0) return "（当前在充电或电量上升，无耗尽风险）"
+
+        // 当前电量耗尽所需小时数
+        val hoursToEmpty = currentLevel / ratePerHour
+        val emptyMs = System.currentTimeMillis() + (hoursToEmpty * 3600_000).toLong()
+        val timeText = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+            .format(java.util.Date(emptyMs))
+        return when {
+            currentLevel <= 20 -> "⚠️ 电量仅剩 $currentLevel%，预计约 ${"%.1f".format(hoursToEmpty)} 小时后（$timeText）耗尽"
+            else -> "预计 ${"%.1f".format(hoursToEmpty)} 小时后（约 $timeText）电量耗尽"
+        }
     }
 
     private fun render(s: DeviceSnapshot) {
