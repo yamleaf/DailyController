@@ -87,13 +87,44 @@ class AppSettingsActivity : AppCompatActivity() {
         binding.tvThemeValue.text = ThemeManager.LABELS[ThemeManager.getMode(this)]
     }
 
-    /** 读取离线监测服务记录的最近离线时间，格式化为「MM-dd HH:mm」；无记录则提示暂无 */
+    /** 读取离线监测服务记录的最近离线时间，格式化展示；无记录则提示暂无。
+     * 近期用相对时间（刚刚 / x分钟前 / 今天 / 昨天），更早回退到「MM-dd HH:mm」。 */
     private fun formatLastOffline(): String {
         val ts = getSharedPreferences(OfflineMonitorService.PREFS, Context.MODE_PRIVATE)
             .getLong(OfflineMonitorService.KEY_LAST_OFFLINE_MS, 0L)
         if (ts == 0L) return "上次离线时间：暂无记录"
-        val sdf = java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.CHINA)
-        return "上次离线时间：${sdf.format(java.util.Date(ts))}"
+        val now = System.currentTimeMillis()
+        val diff = now - ts
+        val timeFmt = java.text.SimpleDateFormat("HH:mm", java.util.Locale.CHINA)
+        val fullFmt = java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.CHINA)
+        val prefix = when {
+            diff < 60_000 -> "刚刚"
+            diff < 3_600_000 -> "${diff / 60_000} 分钟前"
+            else -> {
+                val cal = java.util.Calendar.getInstance()
+                val then = java.util.Calendar.getInstance().apply { timeInMillis = ts }
+                val sameDay = cal.get(java.util.Calendar.YEAR) == then.get(java.util.Calendar.YEAR) &&
+                        cal.get(java.util.Calendar.DAY_OF_YEAR) == then.get(java.util.Calendar.DAY_OF_YEAR)
+                val yCal = java.util.Calendar.getInstance().apply {
+                    add(java.util.Calendar.DAY_OF_YEAR, -1)
+                }
+                val yesterday = yCal.get(java.util.Calendar.YEAR) == then.get(java.util.Calendar.YEAR) &&
+                        yCal.get(java.util.Calendar.DAY_OF_YEAR) == then.get(java.util.Calendar.DAY_OF_YEAR)
+                when {
+                    sameDay -> "今天 ${timeFmt.format(java.util.Date(ts))}"
+                    yesterday -> "昨天 ${timeFmt.format(java.util.Date(ts))}"
+                    else -> fullFmt.format(java.util.Date(ts))
+                }
+            }
+        }
+        return "上次离线时间：$prefix"
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // 返回设置页或切回前台时刷新：若期间有设备离线，时间展示同步更新
+        binding.tvLastOffline.text = formatLastOffline()
+        refreshThemeValue()
     }
 
     /** 主题外观：深色 / 浅色 / 跟随系统（与被控端共用 :protocol 的 ThemeManager） */

@@ -61,6 +61,17 @@ class OfflineMonitorService : Service() {
         fun stopCompat(context: Context) {
             context.stopService(Intent(context, OfflineMonitorService::class.java))
         }
+
+        /**
+         * 记录「最近一次离线时间」（全局，取最新值）。与「离线通知」开关解耦——
+         * 即便未开启通知，设备页 LWT 检测到离线也可写入，保证设置页展示真实最近离线时间。
+         * 守卫：仅当 ts 比已存值更新才覆盖，避免多设备/重复到达时把时间戳改旧。
+         */
+        fun recordLastOffline(context: Context, ts: Long = System.currentTimeMillis()) {
+            val sp = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            val prev = sp.getLong(KEY_LAST_OFFLINE_MS, 0L)
+            if (ts > prev) sp.edit().putLong(KEY_LAST_OFFLINE_MS, ts).apply()
+        }
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -201,9 +212,8 @@ class OfflineMonitorService : Service() {
     }
 
     private fun notifyOffline(device: DeviceRecord) {
-        // 记录最近一次离线时间，供控制端设置页「离线通知」下展示
-        getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putLong(KEY_LAST_OFFLINE_MS, System.currentTimeMillis()).apply()
+        // 记录最近一次离线时间（在线→离线的真实转跳，由 runOnce 的 prev/now 判定），供设置页展示
+        recordLastOffline(this)
         notifyAlert(device.deviceId, "设备离线", "${device.name} 已离线，请检查其网络与后台状态")
     }
 

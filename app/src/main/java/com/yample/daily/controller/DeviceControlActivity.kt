@@ -103,6 +103,11 @@ class DeviceControlActivity : AppCompatActivity() {
     private var remoteEnabled = true
     /** 解绑原因：true=被控端强制解绑，false=控制端主动解绑/从未绑定 */
     private var forceUnbound = false
+    /**
+     * 设备在线态（用于离线转跳守卫）：null=未知（建基线，不记录），
+     * true→false 的真实转跳才写入「上次离线时间」，避免 retained 离线消息重复到达时反复刷新时间戳。
+     */
+    private var deviceWasOnline: Boolean? = null
     /** 增量推送主题 dt/{id}/push 是否订阅成功；失败则回退到 15s 轮询全量 */
     private var pushAvailable = true
     /** B3：Toast 去重状态 —— 相同 key 在窗口内只弹一次，避免失败/离线态循环轰炸 */
@@ -649,6 +654,11 @@ class DeviceControlActivity : AppCompatActivity() {
         }
         if (raw == "offline") {
             // 设备显式发布离线（含 lastWill）：可信，直接判离线（红灯）
+            // 仅在「在线→离线」真实转跳时记录上次离线时间，避免 retained 离线重复到达反复刷新
+            if (deviceWasOnline == true) {
+                OfflineMonitorService.recordLastOffline(this)
+            }
+            deviceWasOnline = false
             runOnUiThread { setConnStatus("设备离线", false) }
             return
         }
@@ -660,6 +670,7 @@ class DeviceControlActivity : AppCompatActivity() {
             return
         }
         // 非 retained 的在线消息：被控端刚刚主动发布 online，确证在线 → 点亮绿灯
+        deviceWasOnline = true
         runOnUiThread { setConnStatus(text, true) }
     }
 
