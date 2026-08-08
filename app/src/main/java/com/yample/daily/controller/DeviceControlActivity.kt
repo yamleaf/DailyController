@@ -754,6 +754,10 @@ class DeviceControlActivity : AppCompatActivity() {
                                 if (cmd.field.isNotBlank()) {
                                     applyAckOptimisticUpdate(cmd.field, cmd.value)
                                 }
+                                // 特殊字段：消息渠道配置 / 渠道切换，需强制拉取快照刷新显示
+                                if (cmd.field == Protocol.FIELD_MSG_CONFIG || cmd.field == Protocol.FIELD_MSG_CHANNEL) {
+                                    forceRefreshSnapshot()
+                                }
                             }
                         }
                     }
