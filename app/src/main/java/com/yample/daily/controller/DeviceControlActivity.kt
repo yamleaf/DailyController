@@ -1161,6 +1161,8 @@ val calendar = CalendarSnapshot(
             refreshCurrentFragment()
             return
         }
+        // 乐观更新：立即在本地快照中更新该设置项的值，避免用户等待被控端回推快照
+        applyOptimisticUpdate(field, value)
         lastCommandLabel = "修改设置"
         val ts = System.currentTimeMillis()
         val rid = UUID.randomUUID().toString()
@@ -1187,6 +1189,39 @@ val calendar = CalendarSnapshot(
                 }
             }
         }
+    }
+
+    /**
+     * 乐观更新：下发设置指令后立即在本地 currentSnapshot 中同步该字段值并刷新 UI，
+     * 不等被控端回推快照，避免「设置页数字/文字不跟着变，切 tab 才刷新」的观感问题。
+     * 被控端后续回推的真实快照会覆盖此乐观值。
+     */
+    private fun applyOptimisticUpdate(field: String, value: PacketValue) {
+        val snap = currentSnapshot ?: return
+        val newValue: Any = when (value) {
+            is PacketValue.BooleanValue -> value.b
+            is PacketValue.IntValue -> value.i
+            is PacketValue.StringValue -> value.s
+        }
+        val settings = snap.settings.map {
+            if (it.key == field) it.copy(value = newValue) else it
+        }
+        currentSnapshot = snap.copy(settings = settings)
+        // 同步更新本地位缓存 JSON，避免后续增量推送以旧基线合并
+        snapshotJson?.takeIf { it.has("settings") }?.let { root ->
+            val arr = root.getAsJsonArray("settings")
+            for (el in arr) {
+                val obj = el.asJsonObject
+                if (obj.has("k") && obj.get("k").asString == field) {
+                    when (value) {
+                        is PacketValue.BooleanValue -> obj.addProperty("v", value.b)
+                        is PacketValue.IntValue -> obj.addProperty("v", value.i)
+                        is PacketValue.StringValue -> obj.addProperty("v", value.s)
+                    }
+                }
+            }
+        }
+        runOnUiThread { refreshCurrentFragment() }
     }
 
     private fun sendTask(action: String, time: String, oldTime: String? = null, name: String? = null) {
