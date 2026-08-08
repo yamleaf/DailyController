@@ -17,7 +17,7 @@ class SettingsFragment : Fragment(), SnapshotFragment {
     private var _binding: FragmentSettingsBinding? = null
     private val binding get() = _binding!!
     private var snapshot: DeviceSnapshot? = null
-    private val settingItems = mutableListOf<SettingItem>()
+    private val settingItems = mutableListOf<SettingListItem>()
     private lateinit var settingAdapter: SettingAdapter
 
     var onToggle: ((SettingItem, Boolean) -> Unit)? = null
@@ -34,6 +34,18 @@ class SettingsFragment : Fragment(), SnapshotFragment {
         private val MSG_KEYS = setOf("mc", "mt", "em", "ei", "wk", "ea")
         /** 「任务每日循环」已移至概览页快捷操作（开启循环 / 关闭循环），不再在设置列表渲染 */
         private val HIDDEN_KEYS = setOf("ar")
+
+        /** 设置项按功能分组：每组一个 section header + 属于该组的 setting keys */
+        private val SETTING_GROUPS = linkedMapOf(
+            "远程控制" to listOf("re"),
+            "省电模式" to listOf("ps"),
+            "伪息屏" to listOf("pm", "tm", "nc", "ga"),
+            "通知转移" to listOf("nt"),
+            "反馈方式" to listOf("fd"),
+            "任务" to listOf("sh", "rt", "rh", "tr", "ot"),
+            "界面" to listOf("bh"),
+            "低电量告警" to listOf("lb", "ba", "bw", "bs", "br", "bd")
+        )
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
@@ -60,7 +72,25 @@ class SettingsFragment : Fragment(), SnapshotFragment {
 
     private fun render(s: DeviceSnapshot) {
         settingItems.clear()
-        settingItems.addAll(s.settings.filter { it.key !in MSG_KEYS && it.key !in HIDDEN_KEYS })
+        // 按功能分组构建设置列表
+        val settingMap = s.settings
+            .filter { it.key !in MSG_KEYS && it.key !in HIDDEN_KEYS }
+            .associateBy { it.key }
+        SETTING_GROUPS.forEach { (groupName, keys) ->
+            val items = keys.mapNotNull { settingMap[it] }
+            if (items.isNotEmpty()) {
+                settingItems.add(SettingListItem.Header(groupName))
+                items.forEach { settingItems.add(SettingListItem.Item(it)) }
+            }
+        }
+        // 不在任何分组中的独立设置项，归入「其他」
+        val groupedKeys = SETTING_GROUPS.values.flatten().toSet()
+        val ungrouped = s.settings
+            .filter { it.key !in MSG_KEYS && it.key !in HIDDEN_KEYS && it.key !in groupedKeys }
+        if (ungrouped.isNotEmpty()) {
+            settingItems.add(SettingListItem.Header("其他"))
+            ungrouped.forEach { settingItems.add(SettingListItem.Item(it)) }
+        }
         settingAdapter.notifyDataSetChanged()
         renderMsgChannelCard(s)
         renderStatuses(s)

@@ -311,28 +311,39 @@ class MainActivity : AppCompatActivity() {
         }
         binding.groupBar.visibility = View.VISIBLE
         binding.groupChips.removeAllViews()
-        addGroupChip("全部", "")
-        groups.forEach { addGroupChip(it, it) }
+        addGroupChip("全部", "", deviceList.size)
+        groups.forEach { group ->
+            val count = deviceList.count { it.group == group }
+            addGroupChip(group, group, count)
+        }
     }
 
-    private fun addGroupChip(label: String, value: String) {
+    private fun addGroupChip(label: String, value: String, count: Int) {
         val isSelected = (selectedGroup == value)
         val ctx = this
         val chip = com.google.android.material.chip.Chip(this).apply {
-            text = label
+            text = if (count > 0) "$label $count" else label
             isCheckable = false
-            // 选中态：品牌色填充+白字；未选中态：surfaceVariant填充+onSurfaceVariant字
-            chipBackgroundColor = android.content.res.ColorStateList.valueOf(
-                if (isSelected) ContextCompat.getColor(ctx, R.color.md_primary)
-                else ContextCompat.getColor(ctx, R.color.md_surfaceVariant)
-            )
-            setTextColor(android.content.res.ColorStateList.valueOf(
-                if (isSelected) ContextCompat.getColor(ctx, R.color.md_onPrimary)
-                else ContextCompat.getColor(ctx, R.color.md_onSurfaceVariant)
-            ))
+            if (isSelected) {
+                chipBackgroundColor = android.content.res.ColorStateList.valueOf(
+                    ContextCompat.getColor(ctx, R.color.md_primary)
+                )
+                chipStrokeWidth = 0f
+                setTextColor(ContextCompat.getColor(ctx, R.color.md_onPrimary))
+            } else {
+                chipBackgroundColor = android.content.res.ColorStateList.valueOf(
+                    ContextCompat.getColor(ctx, R.color.md_surfaceVariant)
+                )
+                chipStrokeWidth = 1f
+                chipStrokeColor = android.content.res.ColorStateList.valueOf(
+                    ContextCompat.getColor(ctx, R.color.md_outlineVariant)
+                )
+                setTextColor(ContextCompat.getColor(ctx, R.color.md_onSurfaceVariant))
+            }
             setOnClickListener {
-                if (!isSelected) {
+                if (selectedGroup != value) {
                     selectedGroup = value
+                    updateGroupChips()
                     applyFilters()
                 }
             }

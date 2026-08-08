@@ -178,16 +178,18 @@ class OverviewFragment : Fragment(), SnapshotFragment {
         applyConnStatus()
     }
 
-    /** 状态灯：用颜色 + 呼吸脉冲表达连接状态，取代原「已连接（已配对）」式冗长文案 */
+/** 状态灯：用球形渐变 + 呼吸脉冲表达连接状态，取代原「已连接（已配对）」式冗长文案 */
     private fun applyConnStatus() {
         if (!isAdded || _binding == null) return
         val ctx = requireContext()
         val key = "$lastConnText|$lastConnOnline"
-        if (appliedStatusKey == key) return   // 避免 render 频繁重绘时反复重启脉冲动画
+        if (appliedStatusKey == key) return
         appliedStatusKey = key
         val (color, pulse) = resolveStatus(lastConnText, lastConnOnline, ctx)
-        binding.dotStatus.setBackgroundResource(R.drawable.bg_dot_offline)
-        animateTint(binding.dotStatus, color)
+
+        // 使用球面渐变圆形作为主状态点（内置高光，不参与 tint）
+        binding.dotStatus.setBackgroundResource(sphereForStatus(lastConnText, lastConnOnline))
+        // 光晕保持纯色平铺，用于动态 tint 光环
         binding.dotHalo.setBackgroundResource(R.drawable.bg_dot_offline)
         animateTint(binding.dotHalo, color)
         // D6：连接失败时状态灯可点击重试
@@ -231,6 +233,20 @@ class OverviewFragment : Fragment(), SnapshotFragment {
             text.contains("已连接") -> (if (online) green else gray) to false
             else -> (if (online) green else gray) to false
         }
+    }
+
+    /** 状态文案 → 球面渐变 drawable（与 resolveStatus 状态逻辑一致） */
+    private fun sphereForStatus(text: String, online: Boolean): Int = when {
+        text == "连接失败" -> R.drawable.bg_sphere_error
+        text.contains("已解绑") || text.contains("已被强制解绑") -> R.drawable.bg_sphere_offline
+        text.contains("订阅被拒") || text.contains("配对发送失败") -> R.drawable.bg_sphere_error
+        text.contains("无心跳响应") || text.contains("设备离线") -> R.drawable.bg_sphere_error
+        text.contains("配对中") || text.contains("配对重试") || text.contains("未配对") -> R.drawable.bg_sphere_pairing
+        text == "探活中…" -> R.drawable.bg_sphere_pairing
+        text.contains("连接中") -> R.drawable.bg_sphere_offline
+        text.contains("已配对") -> R.drawable.bg_sphere_online
+        text.contains("已连接") -> if (online) R.drawable.bg_sphere_online else R.drawable.bg_sphere_offline
+        else -> if (online) R.drawable.bg_sphere_online else R.drawable.bg_sphere_offline
     }
 
     /** B4：断连/未连接时禁用并置灰动作按钮，避免下发无效指令 */

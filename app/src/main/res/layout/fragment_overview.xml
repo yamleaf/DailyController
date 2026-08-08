@@ -122,12 +122,10 @@ android:paddingStart="16dp"
 
                         <View
                             android:id="@+id/dotGloss"
-                            android:layout_width="8dp"
-                            android:layout_height="8dp"
-                            android:layout_gravity="start|top"
-                            android:layout_marginStart="1.5dp"
-                            android:layout_marginTop="1.5dp"
-                            android:alpha="0.9"
+                            android:layout_width="12dp"
+                            android:layout_height="12dp"
+                            android:layout_gravity="center"
+                            android:alpha="1.0"
                             android:background="@drawable/bg_dot_gloss"
                             android:clickable="false"
                             android:focusable="false" />
