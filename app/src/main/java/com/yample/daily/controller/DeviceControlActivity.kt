@@ -1050,6 +1050,19 @@ class DeviceControlActivity : AppCompatActivity() {
                 }
                 "charging_resumed" -> "⚡ 被控端已开始充电（${battery}%），低电量告警已取消"
                 "battery_full" -> "🔋 被控端电量已充满（${battery}%），可拔除电源"
+                "battery_smart_alert" -> {
+                    val predictedTime = obj.get("predictedTime")?.asString ?: ""
+                    // 转发给前台通知服务弹出通知
+                    if (OfflineMonitorService.isEnabled(this)) {
+                        sendBroadcast(Intent(OfflineMonitorService.ACTION_BATTERY_ALERT).apply {
+                            putExtra("deviceName", device.name)
+                            putExtra("deviceId", device.deviceId)
+                            putExtra("battery", battery)
+                            putExtra("predictedTime", predictedTime)
+                        })
+                    }
+                    "⚠️ 电量智能预警：设备电量预计 $predictedTime 耗尽"
+                }
                 else -> "收到被控端告警：$type"
             }
             Log.d(TAG, "收到被控端告警 type=$type battery=$battery -> $msg")

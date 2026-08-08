@@ -366,7 +366,7 @@ class OverviewFragment : Fragment(), SnapshotFragment {
         if (series.size < 2) {
             binding.batterySpark.setData(emptyList())
             binding.tvBatteryTrend.text = "数据不足：被控端需常驻运行以采样电量（近 12 小时）"
-            binding.tvBatteryPredict.text = ""
+            binding.layoutBatteryPredict.visibility = View.GONE
             return
         }
         binding.batterySpark.setData(series.map { it.ts to it.level })
@@ -377,7 +377,13 @@ class OverviewFragment : Fragment(), SnapshotFragment {
             if (drop > 0) "（掉电 ${drop}%）" else "（电量平稳）"
 
         // 电量耗尽预测：基于最近采样点的消耗速度，推算当前电量耗尽的大致时间
-        binding.tvBatteryPredict.text = batteryPredictText(series, last)
+        val predictText = batteryPredictText(series, last)
+        if (predictText.isBlank()) {
+            binding.layoutBatteryPredict.visibility = View.GONE
+        } else {
+            binding.tvBatteryPredict.text = predictText
+            binding.layoutBatteryPredict.visibility = View.VISIBLE
+        }
     }
 
     /**

@@ -4,34 +4,27 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ServiceInfo
+import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
-import androidx.room.Room
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import org.eclipse.paho.client.mqttv3.IMqttDeliveryToken
-import org.eclipse.paho.client.mqttv3.MqttCallback
-import org.eclipse.paho.client.mqttv3.MqttClient
-import org.eclipse.paho.client.mqttv3.MqttConnectOptions
-import org.eclipse.paho.client.mqttv3.MqttMessage
-import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence
-import com.yample.mqttprotocol.BrokerUtils
-import com.yample.mqttprotocol.MqttPacket
-import java.util.concurrent.TimeUnit
+import org.json.JSONObject
 
 /**
- * 离线通知前台服务：周期探测已配对设备的在线状态（订阅 retained 状态主题），
- * 设备由「在线 → 离线」时发送本地通知（恢复在线也通知）。开关在 App 设置页，默认关闭。
+ * 通知前台服务：接收被控端告警（低电量 / 开始充电 / 电量充满 / 电量智能预警）并在本地弹出通知。
+ * 告警由 DeviceControlActivity 的 MQTT 连接接收后通过广播转发至此服务。
+ * 不再做 MQTT 轮询探活（已由 DeviceControlActivity 的 LWT 及 handleStatus 覆盖）。
+ * 开关在 App 设置页，默认关闭。
  */
 class OfflineMonitorService : Service() {
 
@@ -40,13 +33,13 @@ class OfflineMonitorService : Service() {
         private const val CHANNEL_SERVICE = "offline_service"
         private const val SERVICE_NOTIF_ID = 1001
         private const val ALERT_NOTIF_BASE = 2001
-        private const val MONITOR_INTERVAL_MS = 60_000L
-        private const val PROBE_TIMEOUT_MS = 3_000L
 
         const val PREFS = "daily_app"
         const val KEY_ENABLED = "notify_offline"
         const val KEY_LAST_OFFLINE_MS = "last_offline_ms"
         const val KEY_LAST_OFFLINE_DEVICE = "last_offline_device"
+
+        const val ACTION_BATTERY_ALERT = "com.yample.daily.action.BATTERY_ALERT"
 
         fun isEnabled(context: Context): Boolean =
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_ENABLED, false)
@@ -63,39 +56,28 @@ class OfflineMonitorService : Service() {
             context.stopService(Intent(context, OfflineMonitorService::class.java))
         }
 
-        /**
-         * 记录「最近一次离线时间」（按设备分开存储，同一设备只保留最后一次离线）。
-         * 与「离线通知」开关解耦——即便未开启通知，设备页 LWT 检测到离线也可写入。
-         * 设置页展示「最近一次离线」时读取所有设备里的最新一条，并显示对应设备名。
-         */
+        /** 记录最近一次离线时间（按设备分开存储，同一设备只保留最后一次） */
         fun recordLastOffline(context: Context, deviceName: String, deviceId: String, ts: Long = System.currentTimeMillis()) {
             val sp = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            val key = keyFor(deviceId)
+            val key = "last_offline_ms_$deviceId"
             val prev = sp.getLong(key, 0L)
-            // 同一设备只保留最后一次（更新的时间戳才覆盖）
             if (ts > prev) {
                 sp.edit()
                     .putLong(key, ts)
-                    .putString(nameKeyFor(deviceId), deviceName)
+                    .putString("last_offline_name_$deviceId", deviceName)
                     .apply()
             }
         }
 
-        private fun keyFor(deviceId: String) = "last_offline_ms_$deviceId"
-        private fun nameKeyFor(deviceId: String) = "last_offline_name_$deviceId"
-
-        /** 读取所有设备中「最近一次离线」的最新一条（时间戳最大者），返回 (设备名, 时间戳) */
+        /** 读取所有设备中最近一次离线的最新一条，返回 (设备名, 时间戳) */
         fun latestOffline(context: Context): Pair<String, Long> {
             val sp = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             var bestName = ""
             var bestTs = 0L
             sp.all.forEach { (k, v) ->
-                if (k.startsWith("last_offline_ms_") && v is Long) {
-                    if (v > bestTs) {
-                        bestTs = v
-                        val deviceId = k.removePrefix("last_offline_ms_")
-                        bestName = sp.getString(nameKeyFor(deviceId), "") ?: ""
-                    }
+                if (k.startsWith("last_offline_ms_") && v is Long && v > bestTs) {
+                    bestTs = v
+                    bestName = sp.getString("last_offline_name_${k.removePrefix("last_offline_ms_")}", "") ?: ""
                 }
             }
             return bestName to bestTs
@@ -103,24 +85,37 @@ class OfflineMonitorService : Service() {
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val db by lazy {
-        Room.databaseBuilder(applicationContext, AppDatabase::class.java, "daily-db")
-            .fallbackToDestructiveMigration()
-            .build()
+
+    private val batteryAlertReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val deviceName = intent?.getStringExtra("deviceName") ?: return
+            val deviceId = intent.getStringExtra("deviceId") ?: return
+            val battery = intent.getIntExtra("battery", -1)
+            val predictedTime = intent.getStringExtra("predictedTime") ?: ""
+            // 电池智能预警通知
+            val title = "⚠️ 电量耗尽预警"
+            val text = if (battery >= 0) "设备「$deviceName」当前电量 $battery%，预计 $predictedTime 耗尽"
+                else "设备「$deviceName」将在 $predictedTime 耗尽，请及时充电"
+            notifyAlert("battery_$deviceId", title, text)
+        }
     }
-    /** deviceId → 上次探测的在线状态（null=未知，首轮仅建基线不发通知） */
-    private val onlineState = mutableMapOf<String, Boolean?>()
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         createChannels()
         startAsForeground()
-        scope.launch { monitorLoop() }
+        // 注册电池预警广播接收器
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(batteryAlertReceiver, IntentFilter(ACTION_BATTERY_ALERT), RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(batteryAlertReceiver, IntentFilter(ACTION_BATTERY_ALERT))
+        }
         return START_STICKY
     }
 
     override fun onDestroy() {
+        runCatching { unregisterReceiver(batteryAlertReceiver) }
         scope.cancel()
         super.onDestroy()
     }
@@ -128,8 +123,8 @@ class OfflineMonitorService : Service() {
     private fun startAsForeground() {
         val notification = NotificationCompat.Builder(this, CHANNEL_SERVICE)
             .setSmallIcon(R.drawable.ic_device)
-            .setContentTitle("离线通知监测中")
-            .setContentText("正在监测已配对设备的在线状态")
+            .setContentTitle("设备通知监测中")
+            .setContentText("等待被控端告警事件")
             .setOngoing(true)
             .setContentIntent(openAppPendingIntent())
             .build()
@@ -142,13 +137,13 @@ class OfflineMonitorService : Service() {
     private fun createChannels() {
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(
-            NotificationChannel(CHANNEL_ALERT, "设备离线提醒", NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "设备由在线变为离线时提醒"
+            NotificationChannel(CHANNEL_ALERT, "设备告警", NotificationManager.IMPORTANCE_HIGH).apply {
+                description = "被控端低电量、充电状态、电量智能预警等事件通知"
             }
         )
         nm.createNotificationChannel(
-            NotificationChannel(CHANNEL_SERVICE, "离线监测服务", NotificationManager.IMPORTANCE_LOW).apply {
-                description = "离线监测前台服务常驻通知"
+            NotificationChannel(CHANNEL_SERVICE, "设备通知监测服务", NotificationManager.IMPORTANCE_LOW).apply {
+                description = "设备通知监测前台服务常驻通知"
             }
         )
     }
@@ -161,107 +156,18 @@ class OfflineMonitorService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }
 
-    private suspend fun monitorLoop() {
-        while (true) {
-            delay(MONITOR_INTERVAL_MS)
-            runOnce()
-        }
-    }
-
-    /** 探测所有已配对设备，比对状态并通知离线/恢复事件 */
-    private suspend fun runOnce() {
-        val devices = try {
-            db.deviceDao().getAll()
-        } catch (_: Exception) {
-            return
-        }
-        val bound = devices.filter { it.sessionSecret.isNotBlank() && it.bound }
-        val result = mutableMapOf<DeviceRecord, Boolean?>()
-        bound.forEach { result[it] = probe(it) }
-        bound.forEach { device ->
-            val now = result[device]
-            val prev = onlineState[device.deviceId]
-            onlineState[device.deviceId] = now
-            // 探活结果写共享缓存，供设备列表复用（避免双通道重复探活）
-            OnlineStateCache.put(device.deviceId, now, System.currentTimeMillis())
-            // 首轮只建立基线不发通知；之后在线→离线提醒，离线→在线也提醒
-            if (prev != null) {
-                when {
-                    prev == true && now == false -> notifyOffline(device)
-                    prev == false && now == true -> notifyRecovered(device)
-                }
-            }
-        }
-        val ids = bound.map { it.deviceId }.toSet()
-        onlineState.keys.retainAll(ids)
-    }
-
-    /** 短连接订阅状态主题读取 retained 消息：online→true / offline→false / 其它或超时→null */
-    private suspend fun probe(device: DeviceRecord): Boolean? {
-        return withContext(Dispatchers.IO) {
-            try {
-                val client = MqttClient(
-                    BrokerUtils.normalizeBroker(device.broker),
-                    "ctl-monitor-${device.deviceId}",
-                    MemoryPersistence()
-                )
-                val opts = MqttConnectOptions().apply {
-                    userName = device.ctlUser
-                    password = device.ctlPass.toCharArray()
-                    isCleanSession = true
-                    connectionTimeout = 5
-                }
-                val latch = java.util.concurrent.CompletableFuture<String>()
-                client.setCallback(object : MqttCallback {
-                    override fun messageArrived(topic: String?, message: MqttMessage?) {
-                        message?.payload?.let { latch.complete(String(it).trim()) }
-                    }
-                    override fun connectionLost(cause: Throwable?) {}
-                    override fun deliveryComplete(token: IMqttDeliveryToken?) {}
-                })
-                client.connect(opts)
-                client.subscribe("${MqttPacket.TOPIC_PREFIX}/${device.deviceId}/status", 1)
-                val got = try {
-                    latch.get(PROBE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
-                } catch (_: Exception) {
-                    null
-                }
-                client.disconnect()
-                client.close()
-                when (got) {
-                    "online" -> true
-                    "offline" -> false
-                    else -> null
-                }
-            } catch (_: Exception) {
-                null
-            }
-        }
-    }
-
-    private fun notifyOffline(device: DeviceRecord) {
-        // 记录最近一次离线时间（在线→离线的真实转跳，由 runOnce 的 prev/now 判定），供设置页展示
-        recordLastOffline(this, device.name, device.deviceId)
-        notifyAlert(device.deviceId, "设备离线", "${device.name} 已离线，请检查其网络与后台状态")
-    }
-
-    private fun notifyRecovered(device: DeviceRecord) {
-        notifyAlert(device.deviceId, "设备已恢复在线", "${device.name} 已重新上线")
-    }
-
     private fun notifyAlert(tag: String, title: String, text: String) {
         try {
             val notification = NotificationCompat.Builder(this, CHANNEL_ALERT)
                 .setSmallIcon(R.drawable.ic_device)
                 .setContentTitle(title)
                 .setContentText(text)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(text))
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setAutoCancel(true)
                 .setContentIntent(openAppPendingIntent())
                 .build()
             NotificationManagerCompat.from(this).notify(tag, ALERT_NOTIF_BASE, notification)
-        } catch (_: SecurityException) {
-            // POST_NOTIFICATIONS 被拒：前台服务照常运行，但不显示提醒
-        }
+        } catch (_: SecurityException) { }
     }
 }

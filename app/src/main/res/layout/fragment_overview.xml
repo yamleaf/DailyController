@@ -730,15 +730,36 @@ android:paddingStart="16dp"
                     android:textColor="@color/md_onSurfaceVariant"
                     android:textSize="12sp" />
 
-                <TextView
-                    android:id="@+id/tvBatteryPredict"
+                <LinearLayout
+                    android:id="@+id/layoutBatteryPredict"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:text=""
-                    android:textColor="@color/md_tertiary"
-                    android:textSize="12sp"
-                    android:textStyle="bold" />
+                    android:layout_marginTop="8dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingVertical="6dp"
+                    android:paddingHorizontal="10dp"
+                    android:background="@drawable/bg_warning_rounded"
+                    android:visibility="gone">
+
+                    <ImageView
+                        android:id="@+id/ivBatteryPredictIcon"
+                        android:layout_width="16dp"
+                        android:layout_height="16dp"
+                        android:layout_marginEnd="6dp"
+                        android:contentDescription="@null"
+                        android:src="@drawable/ic_battery_warning"
+                        app:tint="@color/md_warning" />
+
+                    <TextView
+                        android:id="@+id/tvBatteryPredict"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text=""
+                        android:textSize="13sp"
+                        android:textColor="@color/md_onWarningContainer" />
+                </LinearLayout>
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 

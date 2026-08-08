@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- battery body -->
+    <path
+        android:fillColor="#FA8C16"
+        android:pathData="M5,6h14a2,2 0,0 1,2 2v8a2,2 0,0 1,-2 2H5a2,2 0,0 1,-2 -2V8a2,2 0,0 1,2 -2z" />
+    <!-- battery cap -->
+    <path
+        android:fillColor="#FA8C16"
+        android:pathData="M19,9h2a1,1 0,0 1,1 1v4a1,1 0,0 1,-1 1h-2z" />
+    <!-- warning triangle -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M12,9l-3,5h6z" />
+    <!-- exclamation mark -->
+    <path
+        android:fillColor="#FA8C16"
+        android:pathData="M12,10.5h0v2.5h0v-2.5zM12,14h0v1h0v-1z" />
+</vector>
