@@ -19,6 +19,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import org.json.JSONObject
+import java.util.Calendar
 
 /**
  * 通知前台服务：接收被控端告警（低电量 / 开始充电 / 电量充满 / 电量智能预警）并在本地弹出通知。
@@ -40,6 +41,7 @@ class OfflineMonitorService : Service() {
         const val KEY_LAST_OFFLINE_DEVICE = "last_offline_device"
 
         const val ACTION_BATTERY_ALERT = "com.yample.daily.action.BATTERY_ALERT"
+        const val ACTION_DEVICE_OFFLINE = "com.yample.daily.action.DEVICE_OFFLINE"
 
         fun isEnabled(context: Context): Boolean =
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_ENABLED, false)
@@ -100,6 +102,18 @@ class OfflineMonitorService : Service() {
         }
     }
 
+    private val offlineReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val deviceName = intent?.getStringExtra("deviceName") ?: return
+            val deviceId = intent.getStringExtra("deviceId") ?: return
+            val ts = intent.getLongExtra("ts", System.currentTimeMillis())
+            recordLastOffline(this@OfflineMonitorService, deviceName, deviceId, ts)
+            val title = "📴 设备已离线"
+            val text = "设备「$deviceName」已于 ${formatTs(ts)} 离线"
+            notifyAlert("offline_$deviceId", title, text)
+        }
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -111,11 +125,18 @@ class OfflineMonitorService : Service() {
         } else {
             registerReceiver(batteryAlertReceiver, IntentFilter(ACTION_BATTERY_ALERT))
         }
+        // 注册设备离线广播接收器（由 DeviceControlActivity / MainActivity 在检测到离线跃迁时发送）
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(offlineReceiver, IntentFilter(ACTION_DEVICE_OFFLINE), RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(offlineReceiver, IntentFilter(ACTION_DEVICE_OFFLINE))
+        }
         return START_STICKY
     }
 
     override fun onDestroy() {
         runCatching { unregisterReceiver(batteryAlertReceiver) }
+        runCatching { unregisterReceiver(offlineReceiver) }
         scope.cancel()
         super.onDestroy()
     }
@@ -169,5 +190,15 @@ class OfflineMonitorService : Service() {
                 .build()
             NotificationManagerCompat.from(this).notify(tag, ALERT_NOTIF_BASE, notification)
         } catch (_: SecurityException) { }
+    }
+
+    private fun formatTs(ts: Long): String {
+        val cal = Calendar.getInstance().apply { timeInMillis = ts }
+        return "%02d-%02d %02d:%02d".format(
+            cal.get(Calendar.MONTH) + 1,
+            cal.get(Calendar.DAY_OF_MONTH),
+            cal.get(Calendar.HOUR_OF_DAY),
+            cal.get(Calendar.MINUTE)
+        )
     }
 }

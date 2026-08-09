@@ -481,11 +481,20 @@ class MainActivity : AppCompatActivity() {
                 result = null
             }
             val final = result
+            val prev = OnlineStateCache.get(device.deviceId)?.first
             OnlineStateCache.put(device.deviceId, final, System.currentTimeMillis())
             withContext(Dispatchers.Main) {
                 onlineState[device.deviceId] = final
                 adapter.setOnline(device.deviceId, final)
                 updateStats()
+                // 在线→离线跃迁：广播给 OfflineMonitorService 统一弹通知 + 记录
+                if (prev == true && final == false) {
+                    sendBroadcast(Intent(OfflineMonitorService.ACTION_DEVICE_OFFLINE).apply {
+                        putExtra("deviceName", device.name)
+                        putExtra("deviceId", device.deviceId)
+                        putExtra("ts", System.currentTimeMillis())
+                    })
+                }
             }
         }
     }

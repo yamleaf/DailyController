@@ -654,9 +654,9 @@ class DeviceControlActivity : AppCompatActivity() {
         }
         if (raw == "offline") {
             // 设备显式发布离线（含 lastWill）：可信，直接判离线（红灯）
-            // 仅在「在线→离线」真实转跳时记录上次离线时间，避免 retained 离线重复到达反复刷新
+            // 仅在「在线→离线」真实转跳时广播，避免 retained 离线重复到达反复通知
             if (deviceWasOnline == true) {
-                OfflineMonitorService.recordLastOffline(this, device.name, device.deviceId)
+                sendOfflineBroadcast(device.name, device.deviceId, System.currentTimeMillis())
             }
             deviceWasOnline = false
             runOnUiThread { setConnStatus("设备离线", false) }
@@ -672,6 +672,15 @@ class DeviceControlActivity : AppCompatActivity() {
         // 非 retained 的在线消息：被控端刚刚主动发布 online，确证在线 → 点亮绿灯
         deviceWasOnline = true
         runOnUiThread { setConnStatus(text, true) }
+    }
+
+    /** 广播设备离线事件，交由 OfflineMonitorService 统一弹通知 + 记录上次离线时间 */
+    private fun sendOfflineBroadcast(deviceName: String, deviceId: String, ts: Long) {
+        sendBroadcast(Intent(OfflineMonitorService.ACTION_DEVICE_OFFLINE).apply {
+            putExtra("deviceName", deviceName)
+            putExtra("deviceId", deviceId)
+            putExtra("ts", ts)
+        })
     }
 
     /**
