@@ -91,7 +91,7 @@ android {
 
     signingConfigs {
         release {
-            storeFile file('DailyTask.jks')
+            storeFile file('DailyController.jks')
             storePassword '123456789'
             keyAlias 'key0'
             keyPassword '123456789'
