@@ -60,12 +60,13 @@ class SwipeRevealLayout @JvmOverloads constructor(
     private fun revealWidth(): Float = (actionPanel?.width ?: 0).toFloat()
 
     override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
-        if (contentView == null || actionPanel == null) return super.onInterceptTouchEvent(ev)
+        val cv = contentView ?: return super.onInterceptTouchEvent(ev)
+        if (actionPanel == null) return super.onInterceptTouchEvent(ev)
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 downX = ev.x
                 downY = ev.y
-                startContentX = contentView!!.translationX
+                startContentX = cv.translationX
                 dragging = false
                 intercepted = false
                 // 点击事件若落在内容层，则交给内容层处理（回收/点击逻辑）
@@ -91,20 +92,21 @@ class SwipeRevealLayout @JvmOverloads constructor(
     }
 
     override fun onTouchEvent(ev: MotionEvent): Boolean {
-        if (contentView == null || actionPanel == null) return super.onTouchEvent(ev)
+        val cv = contentView ?: return super.onTouchEvent(ev)
+        if (actionPanel == null) return super.onTouchEvent(ev)
         if (!dragging) return false
         when (ev.actionMasked) {
             MotionEvent.ACTION_MOVE -> {
                 val rawDx = ev.x - downX
                 val max = revealWidth()
                 val target = (startContentX + rawDx).coerceIn(-max, 0f)
-                contentView!!.translationX = target
+                cv.translationX = target
                 return true
             }
 
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 val max = revealWidth()
-                val current = contentView!!.translationX
+                val current = cv.translationX
                 val shouldOpen = current < -max / 2f
                 animateTo(if (shouldOpen) -max else 0f)
                 dragging = false

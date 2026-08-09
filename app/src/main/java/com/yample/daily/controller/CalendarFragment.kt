@@ -125,9 +125,11 @@ class CalendarFragment : Fragment(), SnapshotFragment {
             holder.binding.tvDay.setTextColor(ctx.getColor(fg))
             if (isToday) {
                 // 今天：底层 = 状态色填充，顶层 = 紫色描边（描边不染状态色）
-                val fill = ContextCompat.getDrawable(ctx, R.drawable.bg_status_pill)!!.mutate()
+                val fill = ContextCompat.getDrawable(ctx, R.drawable.bg_status_pill)?.mutate()
+                    ?: return
+                val stroke = ContextCompat.getDrawable(ctx, R.drawable.bg_status_pill_today)?.mutate()
+                    ?: return
                 fill.setTint(ctx.getColor(bg))
-                val stroke = ContextCompat.getDrawable(ctx, R.drawable.bg_status_pill_today)!!.mutate()
                 holder.binding.tvDay.background = LayerDrawable(arrayOf(fill, stroke))
             } else {
                 holder.binding.tvDay.setBackgroundResource(R.drawable.bg_status_pill)
