@@ -4,7 +4,7 @@ import java.text.SimpleDateFormat
 plugins {
     id 'com.android.application'
     id 'org.jetbrains.kotlin.android'
-    id 'kotlin-kapt'
+    id 'com.google.devtools.ksp' version '2.3.11'
 }
 
 // ==== 构建标识（在 android{} 之外定义，供 defaultConfig 与产物命名共用）====
@@ -91,7 +91,7 @@ android {
 
     signingConfigs {
         release {
-            storeFile file('DailyTask.jks')
+            storeFile file('DailyController.jks')
             storePassword '123456789'
             keyAlias 'key0'
             keyPassword '123456789'
@@ -131,9 +131,9 @@ android {
 
 dependencies {
     implementation project(':protocol')
-    implementation 'androidx.core:core-ktx:1.15.0'
-    implementation 'androidx.appcompat:appcompat:1.7.0'
-    implementation 'com.google.android.material:material:1.12.0'
+    implementation 'androidx.core:core-ktx:1.17.0'
+    implementation 'androidx.appcompat:appcompat:1.7.1'
+    implementation 'com.google.android.material:material:1.14.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.2.0'
     implementation 'androidx.recyclerview:recyclerview:1.4.0'
     implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.1.0'
@@ -144,10 +144,10 @@ dependencies {
     implementation 'com.journeyapps:zxing-android-embedded:4.3.0'
     // Room
     implementation 'androidx.room:room-runtime:2.8.2'
-    kapt 'androidx.room:room-compiler:2.8.2'
+    ksp 'androidx.room:room-compiler:2.8.2'
     implementation 'androidx.room:room-ktx:2.8.2'
     // Gson
-    implementation 'com.google.code.gson:gson:2.11.0'
+    implementation 'com.google.code.gson:gson:2.14.0'
     // 磨砂玻璃（悬浮导航模糊背景；API 31+ 走硬件 RenderEffect，低版本走 RenderScript）
     implementation 'com.github.Dimezis:BlurView:version-2.0.4'
 }
