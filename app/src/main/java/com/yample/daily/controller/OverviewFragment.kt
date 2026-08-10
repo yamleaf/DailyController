@@ -390,22 +390,32 @@ class OverviewFragment : Fragment(), SnapshotFragment {
 
     /**
      * 计算电量耗尽预测文案。
-     * 用最近的一段放电数据（排除充电段）拟合掉电速率（%/小时），
-     * 再按当前电量推算预计耗尽时间。数据不足/正在充电时返回空串。
+     * 用最近的一段纯放电数据（精确排除充电段）拟合掉电速率（%/小时），
+     * 再按当前电量推算预计耗尽时间。
+     *
+     * 算法策略（双窗口）：
+     *   1. 主窗口：从序列末尾往回取「最近一段连续纯放电」数据——最能反映当前使用模式；
+     *      若该段 ≥ 30 分钟则直接用于计算速率。
+     *   2. 回退窗口：若主窗口不足 30 分钟，则扩大到「排除所有充电点后的最近 2 小时」短窗口
+     *      （避免含早期低功耗时段拉低速率）。
+     *   3. 用被控端上报的 [BatteryPoint.charging] 字段精确判定充电点（替代旧版 level≥99 启发式），
+     *      解决"充到 92% 就拔掉"导致整段 12h 数据都被纳入、速率偏低的 bug。
      */
     private fun batteryPredictText(series: List<BatteryPoint>, currentLevel: Int): String {
         if (series.size < 2) return ""
-        // 找最后一次充电之后的连续放电段（若存在充电点，排除其之前数据）
         val sorted = series.sortedBy { it.ts }
-        val lastChargeIdx = sorted.indexOfLast { it.level >= 99 && it.ts > sorted.first().ts }
-        val discharge = if (lastChargeIdx >= 0) sorted.subList(lastChargeIdx, sorted.size) else sorted
-        if (discharge.size < 2) return ""
 
-        val firstP = discharge.first()
-        val lastP = discharge.last()
-        val elapsedHours = (lastP.ts - firstP.ts) / 3600_000.0
-        if (elapsedHours < 0.5) return "（数据不足，暂无法预测耗尽时间）"
-        val ratePerHour = (firstP.level - lastP.level) / elapsedHours  // %/h
+        // 主窗口：最近一段连续纯放电（从末尾往前跳过充电点，再往前找到连续放电段的起点）
+        val latestDischarge = extractLatestDischargeSegment(sorted)
+        if (latestDischarge.size < 2) return ""
+
+        val ratePerHour = {
+            val f = latestDischarge.first()
+            val l = latestDischarge.last()
+            val elapsed = (l.ts - f.ts) / 3600_000.0
+            if (elapsed >= 0.5) (f.level - l.level) / elapsed else fallbackRate(sorted)
+        }()
+
         if (ratePerHour <= 0) return "（当前在充电或电量上升，无耗尽风险）"
 
         // 当前电量耗尽所需小时数
@@ -423,6 +433,39 @@ class OverviewFragment : Fragment(), SnapshotFragment {
             currentLevel <= 20 -> "⚠️ 电量仅剩 $currentLevel%，预计约 ${"%.1f".format(hoursToEmpty)} 小时后（$timeText）耗尽"
             else -> "预计 ${"%.1f".format(hoursToEmpty)} 小时后（约 $timeText）电量耗尽"
         }
+    }
+
+    /** 从排序序列末尾提取最近一段连续纯放电（charging=false）的数据 */
+    private fun extractLatestDischargeSegment(sorted: List<BatteryPoint>): List<BatteryPoint> {
+        var endIdx = sorted.lastIndex
+        // 跳过末尾可能的充电点
+        while (endIdx >= 0 && sorted[endIdx].charging) {
+            endIdx--
+        }
+        if (endIdx < 0) return emptyList()
+        // 往前追溯到这段连续放电的起点（遇到充电点或序列头即停）
+        var startIdx = endIdx
+        while (startIdx > 0 && !sorted[startIdx - 1].charging) {
+            startIdx--
+        }
+        return sorted.subList(startIdx, endIdx + 1)
+    }
+
+    /**
+     * 回退窗口：排除所有充电点后，取最近 2 小时的纯放电数据计算速率。
+     * 仅在主窗口连续放电段不足 30 分钟时调用。
+     */
+    private fun fallbackRate(sorted: List<BatteryPoint>): Double {
+        val nowMs = System.currentTimeMillis()
+        val windowMs = 2L * 3600_000L  // 2 小时短窗口
+        // 过滤：只保留非充电 + 在 2 小时窗口内的点
+        val recent = sorted.filter { !it.charging && (nowMs - it.ts <= windowMs) }
+        if (recent.size < 2) return -1.0
+        val f = recent.first()
+        val l = recent.last()
+        val elapsed = (l.ts - f.ts) / 3600_000.0
+        if (elapsed < 0.3) return -1.0  // 至少需要 18 分钟
+        return (f.level - l.level) / elapsed
     }
 
     private fun render(s: DeviceSnapshot) {

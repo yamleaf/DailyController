@@ -13,8 +13,8 @@ data class DeviceSnapshot(
     val syncedAt: Long = 0L
 )
 
-/** B5：被控端电池采样序列（{ts, level}），用于绘制电池曲线 */
-data class BatteryPoint(val ts: Long, val level: Int)
+/** B5：被控端电池采样序列（{ts, level, charging}），用于绘制电池曲线 + 耗电速率计算 */
+data class BatteryPoint(val ts: Long, val level: Int, val charging: Boolean = false)
 
 data class CalendarSnapshot(
     val punched: String = "0",

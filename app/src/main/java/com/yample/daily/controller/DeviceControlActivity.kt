@@ -1178,7 +1178,8 @@ val calendar = CalendarSnapshot(
             val o = it.asJsonObject
             val ts = o.get("ts")?.takeIf { e -> e.isJsonPrimitive }?.asLong ?: 0L
             val level = o.get("level")?.takeIf { e -> e.isJsonPrimitive }?.asInt ?: -1
-            if (level >= 0) batterySeries.add(BatteryPoint(ts, level))
+            val charging = o.get("charging")?.takeIf { e -> e.isJsonPrimitive }?.asBoolean ?: false
+            if (level >= 0) batterySeries.add(BatteryPoint(ts, level, charging))
         }
         val history = mutableListOf<HistoryItem>()
         root.getAsJsonArray("history")?.forEach {
