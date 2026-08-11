@@ -79,7 +79,7 @@ jobs:
           export TZ='Asia/Shanghai'
           DATE_TAG=$(date +'%Y%m%d')
           SHA7=$(echo "${{ github.sha }}" | cut -c1-7)
-          BASELINE=$(grep "baselineVersion" app/build.gradle | sed -E "s/.*'([0-9.]+)'.*/\1/")
+          BASELINE=$(grep "def baselineVersion" app/build.gradle | sed -E "s/.*'([0-9.]+)'.*/\1/")
           echo "version=${BASELINE:-1.0.0}-alpha" >> "$GITHUB_OUTPUT"
           echo "tag=dailyController-${DATE_TAG}-${SHA7}-${{ github.run_number }}" >> "$GITHUB_OUTPUT"
           echo "name=DailyController v${BASELINE:-1.0.0}-alpha (Build #${{ github.run_number }})" >> "$GITHUB_OUTPUT"
