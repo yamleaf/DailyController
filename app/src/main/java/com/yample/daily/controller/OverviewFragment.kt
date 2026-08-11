@@ -39,6 +39,8 @@ class OverviewFragment : Fragment(), SnapshotFragment {
     var onRetryClick: (() -> Unit)? = null
     /** 对称按钮：右侧「重新连接」——断开并重建 MQTT 连接 */
     var onReconnectClick: (() -> Unit)? = null
+    /** 设备告警历史点击：弹出与首次收到时一致的告警弹窗 */
+    var onAlertClick: ((AlertRecord) -> Unit)? = null
     /** 下拉刷新 3 秒冷却：避免频繁下拉导致的重复刷新 */
     private var lastRefreshMs = 0L
     /** 下拉刷新延迟 3 秒触发：防止下拉误触，保持下拉 3 秒才真正发起刷新 */
@@ -73,6 +75,13 @@ class OverviewFragment : Fragment(), SnapshotFragment {
         // 渲染「最近指令」时 NPE 闪退（且 R8 会按「字段仅经构造函数写入」优化掉空值保护，见 f7e4833 同类问题）
         recentCmdsKey = "recent_cmds_v2_${requireActivity().intent.getStringExtra("deviceId") ?: "unknown"}"
         restoreRecentCmds()
+        // 设备告警历史：进入总览页加载一次
+        val deviceId = requireActivity().intent.getStringExtra("deviceId") ?: "unknown"
+        refreshAlerts(AlertHistory.load(requireContext(), deviceId))
+        binding.btnAlertsClear.setOnClickListener {
+            AlertHistory.clear(requireContext(), deviceId)
+            refreshAlerts(emptyList())
+        }
         binding.swipeRefresh.setOnRefreshListener { onSwipeRefresh() }
         binding.btnRefresh.setOnClickListener { triggerRefresh() }
         binding.btnReconnect.setOnClickListener { onReconnectClick?.invoke() }
@@ -308,6 +317,33 @@ class OverviewFragment : Fragment(), SnapshotFragment {
         saveRecentCmds()
     }
 
+    /** 设备告警历史：渲染到总览页「设备告警」区块，点击弹出告警弹窗 */
+    fun refreshAlerts(alerts: List<AlertRecord>) {
+        if (_binding == null) return
+        binding.layoutAlerts.removeAllViews()
+        binding.tvAlertsEmpty.visibility = if (alerts.isEmpty()) View.VISIBLE else View.GONE
+        binding.btnAlertsClear.visibility = if (alerts.isEmpty()) View.GONE else View.VISIBLE
+        alerts.forEach { alert ->
+            val row = RowInfoBinding.inflate(LayoutInflater.from(requireContext()))
+            row.tvRowLabel.text = alert.title
+            val timeStr = SimpleDateFormat("MM-dd HH:mm", Locale.CHINA).format(Date(alert.ts))
+            row.tvRowValue.text = if (alert.type == "device_offline") {
+                "$timeStr · 已离线"
+            } else {
+                "$timeStr · ${alert.battery}%"
+            }
+            row.tvRowValue.setTextColor(requireContext().getColor(
+                when (alert.type) {
+                    "battery_smart_alert", "low_battery", "device_offline" -> R.color.md_error
+                    "battery_full" -> R.color.md_tertiary
+                    else -> R.color.md_onSurface
+                }
+            ))
+            row.root.setOnClickListener { onAlertClick?.invoke(alert) }
+            binding.layoutAlerts.addView(row.root)
+        }
+    }
+
     private fun restoreRecentCmds() {
         val prefs = requireActivity().getSharedPreferences("remote_ctrl", android.content.Context.MODE_PRIVATE)
         val json = prefs.getString(recentCmdsKey, null) ?: return
@@ -376,10 +412,22 @@ class OverviewFragment : Fragment(), SnapshotFragment {
         binding.tvBatteryTrend.text = "近 12 小时：$first% → $last%" +
             if (drop > 0) "（掉电 ${drop}%）" else "（电量平稳）"
 
-        // 电量耗尽预测：基于最近采样点的消耗速度，推算当前电量耗尽的大致时间
-        // 使用运行时实时电量而非采样点末值，避免采样滞后导致日期计算偏差
+        // 电量预测：优先使用被控端上报的 BatteryPredictor 结果（与被控端智能预警同一算法，
+        // 预测「降至低电量阈值的时间」），避免控制端本地另算导致与上报值偏差大。
+        // 仅当被控端无预测数据（数据不足 / 充电中）时才回退到本地曲线推算。
         val level = if (currentRuntimeBattery >= 0) currentRuntimeBattery else last
-        val predictText = batteryPredictText(series, level)
+        val devicePredictTime = snapshot?.runtime?.get("batteryPredictTime")
+        val devicePredictThreshold = snapshot?.runtime?.get("batteryPredictThreshold")
+        val devicePredictHas = snapshot?.runtime?.get("batteryPredictHas") == "true"
+        val devicePredictCharging = snapshot?.runtime?.get("batteryPredictCharging") == "true"
+        val predictText: String = when {
+            devicePredictHas && devicePredictCharging -> "（当前在充电，无耗尽风险）"
+            !devicePredictTime.isNullOrBlank() -> {
+                val threshold = devicePredictThreshold ?: "30"
+                "预计 $devicePredictTime 降至低电量阈值 ${threshold}%"
+            }
+            else -> batteryPredictText(series, level)
+        }
         if (predictText.isBlank()) {
             binding.layoutBatteryPredict.visibility = View.GONE
         } else {
@@ -418,11 +466,13 @@ class OverviewFragment : Fragment(), SnapshotFragment {
 
         if (ratePerHour <= 0) return "（当前在充电或电量上升，无耗尽风险）"
 
-        // 当前电量耗尽所需小时数
-        val hoursToEmpty = currentLevel / ratePerHour
-        // 用 Calendar 计算预计耗尽时间，确保日期进位准确（SimpleDateFormat+Date 在某些 locale 下可能出问题）
+        // 预测降至低电量阈值的时间（与被控端 BatteryPredictor 口径一致，而非耗尽到 0%）
+        val threshold = snapshot?.settings?.firstOrNull { it.key == "lb" }?.value as? Int ?: 30
+        val targetLevel = currentLevel.coerceAtLeast(threshold)
+        val hoursToTarget = (targetLevel - threshold).toDouble() / ratePerHour
+        // 用 Calendar 计算预计到达阈值时间，确保日期进位准确（SimpleDateFormat+Date 在某些 locale 下可能出问题）
         val cal = java.util.Calendar.getInstance().apply {
-            add(java.util.Calendar.MINUTE, (hoursToEmpty * 60).toInt())
+            add(java.util.Calendar.MINUTE, (hoursToTarget * 60).toInt())
         }
         val timeText = String.format("%02d-%02d %02d:%02d",
             cal.get(java.util.Calendar.MONTH) + 1,
@@ -430,8 +480,8 @@ class OverviewFragment : Fragment(), SnapshotFragment {
             cal.get(java.util.Calendar.HOUR_OF_DAY),
             cal.get(java.util.Calendar.MINUTE))
         return when {
-            currentLevel <= 20 -> "⚠️ 电量仅剩 $currentLevel%，预计约 ${"%.1f".format(hoursToEmpty)} 小时后（$timeText）耗尽"
-            else -> "预计 ${"%.1f".format(hoursToEmpty)} 小时后（约 $timeText）电量耗尽"
+            currentLevel <= 20 -> "⚠️ 电量仅剩 $currentLevel%，预计约 ${"%.1f".format(hoursToTarget)} 小时后（$timeText）降至 ${threshold}%"
+            else -> "预计 ${"%.1f".format(hoursToTarget)} 小时后（约 $timeText）降至低电量阈值 ${threshold}%"
         }
     }
 

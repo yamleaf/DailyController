@@ -108,8 +108,21 @@ class OfflineMonitorService : Service() {
             val deviceId = intent.getStringExtra("deviceId") ?: return
             val ts = intent.getLongExtra("ts", System.currentTimeMillis())
             recordLastOffline(this@OfflineMonitorService, deviceName, deviceId, ts)
+            // 离线事件写入该设备自己的告警列表（AlertHistory 按 deviceId 隔离，只记本设备）
+            // 广播发送方已做「在线→离线真实转跳」去重（MainActivity / DeviceControlActivity），不会重复记录
             val title = "📴 设备已离线"
             val text = "设备「$deviceName」已于 ${formatTs(ts)} 离线"
+            AlertHistory.add(
+                this@OfflineMonitorService,
+                deviceId,
+                AlertRecord(
+                    ts = ts,
+                    type = "device_offline",
+                    title = title,
+                    msg = text,
+                    battery = -1
+                )
+            )
             notifyAlert("offline_$deviceId", title, text)
         }
     }

@@ -33,6 +33,7 @@ import com.yample.mqttprotocol.PacketValue
 import com.yample.mqttprotocol.PacketValueAdapter
 import com.yample.mqttprotocol.Protocol
 import com.yample.mqttprotocol.SecretBox
+import com.yample.mqttprotocol.dialog.UnifiedDialogKit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -226,6 +227,7 @@ class DeviceControlActivity : AppCompatActivity() {
             onRePairClick = { retryPair() }
             onRetryClick = { retryConnection() }
             onReconnectClick = { retryConnection() }
+            onAlertClick = { record -> showAlertDialog(record) }
             setRemoteEnabled(remoteEnabled)
         }
         tasksFragment = TasksFragment().apply {
@@ -1050,17 +1052,27 @@ class DeviceControlActivity : AppCompatActivity() {
             val obj = JsonParser.parseString(json).asJsonObject
             val type = obj.get("type")?.asString ?: return
             val battery = if (obj.has("battery")) obj.get("battery").asInt else -1
+            var threshold = -1
+            var stage = 1
+            var predictedTime = ""
+            val title: String
             val msg = when (type) {
                 "low_battery" -> {
-                    val threshold = if (obj.has("threshold")) obj.get("threshold").asInt else -1
-                    val stage = if (obj.has("stage")) obj.get("stage").asInt else 1
-                    "🔋 低电量告警（第${stage}档）：被控端电量 ${battery}%" +
-                        if (threshold > 0) "，已低于阈值 ${threshold}%" else ""
+                    threshold = if (obj.has("threshold")) obj.get("threshold").asInt else -1
+                    stage = if (obj.has("stage")) obj.get("stage").asInt else 1
+                    title = "🔋 低电量告警"
+                    "被控端电量 ${battery}%${if (threshold > 0) "，已低于阈值 ${threshold}%" else ""}（第${stage}档）"
                 }
-                "charging_resumed" -> "⚡ 被控端已开始充电（${battery}%），低电量告警已取消"
-                "battery_full" -> "🔋 被控端电量已充满（${battery}%），可拔除电源"
+                "charging_resumed" -> {
+                    title = "⚡ 已开始充电"
+                    "被控端已开始充电（${battery}%），低电量告警已取消"
+                }
+                "battery_full" -> {
+                    title = "🔋 电量已充满"
+                    "被控端电量已充满（${battery}%），可拔除电源"
+                }
                 "battery_smart_alert" -> {
-                    val predictedTime = obj.get("predictedTime")?.asString ?: ""
+                    predictedTime = obj.get("predictedTime")?.asString ?: ""
                     // 转发给前台通知服务弹出通知
                     if (OfflineMonitorService.isEnabled(this)) {
                         sendBroadcast(Intent(OfflineMonitorService.ACTION_BATTERY_ALERT).apply {
@@ -1070,15 +1082,46 @@ class DeviceControlActivity : AppCompatActivity() {
                             putExtra("predictedTime", predictedTime)
                         })
                     }
-                    "⚠️ 电量智能预警：设备电量预计 $predictedTime 耗尽"
+                    title = "⚠️ 电量智能预警"
+                    "设备电量预计 $predictedTime 降至低电量阈值，请及时充电"
                 }
-                else -> "收到被控端告警：$type"
+                else -> {
+                    title = "收到被控端告警"
+                    "告警类型：$type"
+                }
             }
             Log.d(TAG, "收到被控端告警 type=$type battery=$battery -> $msg")
-            runOnUiThread { Toast.makeText(this, msg, Toast.LENGTH_LONG).show() }
+            // 持久化历史告警
+            val record = AlertRecord(
+                ts = System.currentTimeMillis(),
+                type = type,
+                title = title,
+                msg = msg,
+                battery = battery,
+                threshold = threshold,
+                stage = stage,
+                predictedTime = predictedTime
+            )
+            AlertHistory.add(this, device.deviceId, record)
+            runOnUiThread {
+                // 弹窗展示，用户点击「知道了」关闭
+                showAlertDialog(record)
+                overviewFragment.refreshAlerts(AlertHistory.load(this, device.deviceId))
+            }
         } catch (e: Exception) {
             e.printStackTrace()
         }
+    }
+
+    /** 告警弹窗：用户点击「知道了」关闭；供实时告警与历史记录点击共用 */
+    private fun showAlertDialog(record: AlertRecord) {
+        UnifiedDialogKit.showWarning(
+            ctx = this,
+            title = record.title,
+            message = record.msg,
+            confirmText = "知道了",
+            cancelText = "关闭"
+        )
     }
 
     private fun verifyAlert(packet: MqttPacket): Boolean {

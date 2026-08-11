@@ -72,20 +72,43 @@ jobs:
           name: dailyController_release
           path: app/build/outputs/apk/release/*.apk
 
+      - name: Compute release metadata
+        id: meta
+        run: |
+          # 北京时间（Asia/Shanghai）
+          export TZ='Asia/Shanghai'
+          DATE_TAG=$(date +'%Y%m%d')
+          SHA7=$(echo "${{ github.sha }}" | cut -c1-7)
+          BASELINE=$(grep "baselineVersion" app/build.gradle | sed -E "s/.*'([0-9.]+)'.*/\1/")
+          echo "version=${BASELINE:-1.0.0}-alpha" >> "$GITHUB_OUTPUT"
+          echo "tag=dailyController-${DATE_TAG}-${SHA7}-${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+          echo "name=DailyController v${BASELINE:-1.0.0}-alpha (Build #${{ github.run_number }})" >> "$GITHUB_OUTPUT"
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          PREV_TAG=$(git tag --sort=-creatordate | head -1)
+          echo "## Changelog" > CHANGELOG.md
+          if [ -n "$PREV_TAG" ]; then
+            git log --oneline --no-merges "$PREV_TAG"..HEAD --pretty=format:'- %s' >> CHANGELOG.md
+          else
+            git log --oneline --no-merges -30 --pretty=format:'- %s' >> CHANGELOG.md
+          fi
+          echo "" >> CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          echo "---" >> CHANGELOG.md
+          echo "- Branch: ${{ github.ref_name }}" >> CHANGELOG.md
+          echo "- Commit: ${{ github.sha }}" >> CHANGELOG.md
+
       - name: Publish GitHub Release
         if: github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: dailyController-${{ github.run_number }}
-          name: DailyController Build #${{ github.run_number }}
-          body: |
-            Auto-built by GitHub Actions.
-
-            - Branch: ${{ github.ref_name }}
-            - Commit: ${{ github.sha }}
-            - Note: This release is for testing and experience.
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: ${{ steps.meta.outputs.name }}
+          body_path: CHANGELOG.md
           files: |
             app/build/outputs/apk/debug/*.apk
             app/build/outputs/apk/release/*.apk
           draft: false
-          prerelease: false
+          prerelease: true

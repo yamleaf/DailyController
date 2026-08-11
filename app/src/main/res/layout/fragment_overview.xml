@@ -772,6 +772,41 @@ android:paddingStart="16dp"
                 android:orientation="vertical" />
         </com.google.android.material.card.MaterialCardView>
 
+        <!-- ============ 设备告警（被控端上报的事件告警历史） ============ -->
+        <TextView style="@style/SectionTitle" android:text="设备告警" />
+        <com.google.android.material.card.MaterialCardView style="@style/SectionCard">
+            <LinearLayout
+                style="@style/SectionBody"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/tvAlertsEmpty"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingVertical="4dp"
+                    android:text="暂无告警，被控端低电量 / 充电 / 充满等事件将在此记录"
+                    android:textColor="@color/md_onSurfaceVariant"
+                    android:textSize="13sp" />
+
+                <LinearLayout
+                    android:id="@+id/layoutAlerts"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnAlertsClear"
+                    style="@style/Widget.Material3.Button.TextButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="end"
+                    android:text="清空告警记录"
+                    android:textColor="@color/md_onSurfaceVariant"
+                    android:textSize="12sp"
+                    android:visibility="gone" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
     </LinearLayout>
 
     </androidx.core.widget.NestedScrollView>
