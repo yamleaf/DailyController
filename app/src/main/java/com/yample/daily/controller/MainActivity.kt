@@ -12,7 +12,8 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.room.Room
 import com.google.gson.Gson
-import com.google.zxing.integration.android.IntentIntegrator
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 import com.yample.daily.controller.databinding.ActivityMainBinding
 import com.yample.mqttprotocol.BindingPayload
 import com.yample.mqttprotocol.BrokerUtils
@@ -71,7 +72,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         db = Room.databaseBuilder(this, AppDatabase::class.java, "daily-db")
-            .fallbackToDestructiveMigration()
+            .fallbackToDestructiveMigration(dropAllTables = true)
             .build()
 
         binding.rvDevices.layoutManager = LinearLayoutManager(this)
@@ -178,11 +179,27 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /** 扫码添加：用 ScanContract 替代已废弃的 IntentIntegrator */
+    private val barcodeLauncher = registerForActivityResult(ScanContract()) { result ->
+        val contents = result.contents ?: return@registerForActivityResult
+        try {
+            val payload = Gson().fromJson(contents, BindingPayload::class.java)
+            if (payload.broker.isNotBlank() && payload.deviceId.isNotBlank()) {
+                addDevice(payload, navigate = true)
+            } else {
+                Toast.makeText(this, "二维码缺少必要字段（broker/deviceId）", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            Toast.makeText(this, "无效的二维码格式", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private fun startScan() {
-        IntentIntegrator(this)
-            .setCaptureActivity(ScanActivity::class.java)
-            .setDesiredBarcodeFormats(IntentIntegrator.QR_CODE)
-            .initiateScan()
+        barcodeLauncher.launch(
+            ScanOptions()
+                .setCaptureActivity(ScanActivity::class.java)
+                .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+        )
     }
 
     override fun onResume() {
@@ -499,24 +516,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        val result = IntentIntegrator.parseActivityResult(requestCode, resultCode, data)
-        if (result != null && result.contents != null) {
-            try {
-                val payload = Gson().fromJson(result.contents, BindingPayload::class.java)
-                if (payload.broker.isNotBlank() && payload.deviceId.isNotBlank()) {
-                    addDevice(payload)
-                } else {
-                    Toast.makeText(this, "二维码缺少必要字段（broker/deviceId）", Toast.LENGTH_SHORT).show()
-                }
-            } catch (e: Exception) {
-                Toast.makeText(this, "无效的二维码格式", Toast.LENGTH_SHORT).show()
-            }
-        } else {
-            super.onActivityResult(requestCode, resultCode, data)
-        }
-    }
-
     private fun addDevice(payload: BindingPayload, navigate: Boolean = false) {
         lifecycleScope.launch(Dispatchers.IO) {
             val device = DeviceRecord(
@@ -537,7 +536,7 @@ class MainActivity : AppCompatActivity() {
                     intent.putExtra("deviceId", device.deviceId)
                     startActivity(intent)
                 } else {
-                    Toast.makeText(this@MainActivity, "设备添加成功，请在设备控制页完成配对", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@MainActivity, "设备已添加", Toast.LENGTH_SHORT).show()
                 }
             }
         }

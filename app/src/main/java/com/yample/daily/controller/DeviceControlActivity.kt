@@ -109,7 +109,7 @@ class DeviceControlActivity : AppCompatActivity() {
      * true→false 的真实转跳才写入「上次离线时间」，避免 retained 离线消息重复到达时反复刷新时间戳。
      */
     private var deviceWasOnline: Boolean? = null
-    /** 增量推送主题 dt/{id}/push 是否订阅成功；失败则回退到 15s 轮询全量 */
+    /** 增量推送主题 dt/{id}/push 是否订阅成功（仅影响提示文案；SUCCESS 一律单次拉快照） */
     private var pushAvailable = true
     /** B3：Toast 去重状态 —— 相同 key 在窗口内只弹一次，避免失败/离线态循环轰炸 */
     private var lastToastKey: String? = null
@@ -172,7 +172,7 @@ class DeviceControlActivity : AppCompatActivity() {
         val deviceId = intent.getStringExtra("deviceId")
         if (deviceId.isNullOrBlank()) { finish(); return }
         db = Room.databaseBuilder(this, AppDatabase::class.java, "daily-db")
-            .fallbackToDestructiveMigration().build()
+            .fallbackToDestructiveMigration(dropAllTables = true).build()
         val loaded = runBlocking(Dispatchers.IO) { db.deviceDao().getById(deviceId) }
         if (loaded == null) {
             Toast.makeText(this, "设备记录不存在", Toast.LENGTH_SHORT).show(); finish(); return
@@ -499,13 +499,13 @@ class DeviceControlActivity : AppCompatActivity() {
         }
         if (pushDenied) {
             pushAvailable = false
-            Log.w(TAG, "增量推送主题订阅失败，已回退到 15s 轮询全量")
+            Log.w(TAG, "增量推送主题订阅失败：仍不轮询；设置 SUCCESS 后会单次拉快照")
         }
         if (anyDenied) {
             runOnUiThread {
                 setConnStatus("已连接（订阅被拒）", true)
                 val msg = if (pushDenied) {
-                    "增量推送主题 ${MqttPacket.TOPIC_PREFIX}/${device.deviceId}/push 被 broker 拒绝（EMQX ACL 未授权）。已自动回退到每 15 秒轮询全量，如需开启增量推送，请给账户 ${device.ctlUser} 增加该主题的订阅权限。"
+                    "增量推送主题 ${MqttPacket.TOPIC_PREFIX}/${device.deviceId}/push 被 broker 拒绝（EMQX ACL 未授权）。不会回退轮询；改设置成功后仍会拉一次快照。请给账户 ${device.ctlUser} 增加该主题的订阅权限以恢复增量推送。"
                 } else {
                     "部分主题订阅被 broker 拒绝（多为 EMQX ACL 未授权 ${MqttPacket.TOPIC_PREFIX}/${device.deviceId}/#）。请检查账户 ${device.ctlUser} 的 ACL 是否允许该主题。"
                 }
@@ -763,24 +763,14 @@ class DeviceControlActivity : AppCompatActivity() {
                     }
                     "UNBOUND" -> Toast.makeText(this, "被控端：当前未绑定，请先用二维码完成配对", Toast.LENGTH_SHORT).show()
                     "SIGN_FAIL" -> Toast.makeText(this, "被控端：指令签名校验失败", Toast.LENGTH_SHORT).show()
-                    // 成功路径不再拉全量快照：被控端在回 ACK 后会 publishPush 增量（action 成功时
-                    // handleAction 主动推送 statuses/runtime/tasks；任务增删改走广播 → remoteChangedReceiver
-                    // 推送 tasks/settings/statuses/runtime），onPush 已按 delta 覆盖合并本地缓存并刷新 UI。
-                    // 这里若再 forceRefreshSnapshot() 查全量：① 与增量机制重复，违背「增量即最终态」；
-                    // ② 全量查询命中被控端 30s 缓存可能返回旧值，把刚更新的增量覆盖回去（灰→蓝→灰）。
+                    // 成功路径：以被控端快照为准刷新 UI（防增量 push 漏发漏刷）；不做本地乐观写。
+                    // 延迟拉全量见 forceRefreshSnapshot：ACK 可能早于被控端状态落地。
                     "SUCCESS" -> {
-                        // ACK 成功：把下发的字段值同步到本地快照并刷新 UI
-                        val ackRid2 = packet?.rid
-                        ackRid2?.let { rid ->
-                            pendingCommands.remove(rid)?.let { cmd ->
-                                if (cmd.field.isNotBlank()) {
-                                    applyAckOptimisticUpdate(cmd.field, cmd.value)
-                                }
-                                // 特殊字段：消息渠道配置 / 渠道切换，需强制拉取快照刷新显示
-                                if (cmd.field == Protocol.FIELD_MSG_CONFIG || cmd.field == Protocol.FIELD_MSG_CHANNEL) {
-                                    forceRefreshSnapshot()
-                                }
-                            }
+                        // 以被控端为准：不做本地乐观写。SUCCESS 即执行成功，主动拉一次快照，
+                        // 避免被控端未发增量 push 时漏刷（不恢复 15s 轮询）。
+                        // pendingCommands 由下方统一 remove 取 label。
+                        if (packet?.rid != null && pendingCommands.containsKey(packet.rid)) {
+                            forceRefreshSnapshot()
                         }
                     }
                     "TASK_OK" -> Toast.makeText(this, "任务已更新", Toast.LENGTH_SHORT).show()
@@ -855,8 +845,7 @@ class DeviceControlActivity : AppCompatActivity() {
      * SERVICE_UNAVAILABLE / DUP_OR_STALE）：下发动作时本地 UI 已乐观翻转，若被控端拒绝而本地不回滚，
      * 显示会长期不一致，因此需拉一次全量校正。
      *
-     * 成功路径（SUCCESS / TASK_OK）不再走这里：被控端会主动 publishPush 增量，onPush 覆盖合并本地
-     * 缓存并刷新 UI，避免全量查询命中被控端 30s 缓存返回旧值、覆盖掉刚收到的增量。
+     * 失败回执 / SUCCESS 补拉快照：本地 UI 可能已乐观翻转，或以被控端落地态为准防 push 漏刷。
      *
      * 直接调 sendQuery() 会被它内部的并发守护（queryPendingRid != null 即 return）吞掉：
      * 下发动作时若刚好有查询在途，这次「真正需要的刷新」就丢了。这里先清掉挂起 rid 与超时回调，
@@ -1115,12 +1104,13 @@ class DeviceControlActivity : AppCompatActivity() {
 
     /** 告警弹窗：用户点击「知道了」关闭；供实时告警与历史记录点击共用 */
     private fun showAlertDialog(record: AlertRecord) {
-        UnifiedDialogKit.showWarning(
+        UnifiedDialogKit.showConfirm(
             ctx = this,
             title = record.title,
             message = record.msg,
             confirmText = "知道了",
-            cancelText = "关闭"
+            cancelText = null,
+            icon = UnifiedDialogKit.IconType.WARNING
         )
     }
 
@@ -1287,38 +1277,6 @@ val calendar = CalendarSnapshot(
                 }
             }
         }
-    }
-
-    /**
-     * ACK 成功后的乐观更新：将下发的字段值同步到本地 currentSnapshot 并刷新 UI。
-     * 仅在收到 SUCCESS ACK 时调用，避免因网络延迟导致 UI 与被控端状态不一致。
-     */
-    private fun applyAckOptimisticUpdate(field: String, value: PacketValue) {
-        val snap = currentSnapshot ?: return
-        val newValue: Any = when (value) {
-            is PacketValue.BooleanValue -> value.b
-            is PacketValue.IntValue -> value.i
-            is PacketValue.StringValue -> value.s
-        }
-        val settings = snap.settings.map {
-            if (it.key == field) it.copy(value = newValue) else it
-        }
-        currentSnapshot = snap.copy(settings = settings)
-        // 同步更新本地位缓存 JSON，避免后续增量推送以旧基线合并
-        snapshotJson?.takeIf { it.has("settings") }?.let { root ->
-            val arr = root.getAsJsonArray("settings")
-            for (el in arr) {
-                val obj = el.asJsonObject
-                if (obj.has("k") && obj.get("k").asString == field) {
-                    when (value) {
-                        is PacketValue.BooleanValue -> obj.addProperty("v", value.b)
-                        is PacketValue.IntValue -> obj.addProperty("v", value.i)
-                        is PacketValue.StringValue -> obj.addProperty("v", value.s)
-                    }
-                }
-            }
-        }
-        runOnUiThread { refreshCurrentFragment() }
     }
 
     private fun sendTask(action: String, time: String, oldTime: String? = null, name: String? = null) {
