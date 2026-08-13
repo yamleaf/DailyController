@@ -34,7 +34,7 @@ def buildSource = System.getenv('BUILD_SOURCE') ?:
         (((System.getenv('GITHUB_ACTIONS') == 'true') || (System.getenv('CI') == 'true')) ? 'ci' : 'local')
 
 // 产物标识：<构建来源>-<git短哈希>，如 local-fa96b30 / ci-abcdef1。
-// 既是 APK 文件名的核心段，也拼进 versionName，扫一眼就知道包从哪来、对应哪个提交。
+// 仅用于 APK 文件名（溯源），versionName 只显示 git 短哈希（见下方版本号策略）。
 def buildTag = "${buildSource}-${gitShort}"
 
 // 构建时间（分钟精度，与 versionCode 的 2 分钟粒度相称，避免秒级变动导致无谓重编）
@@ -58,7 +58,8 @@ android {
         // 版本号策略（对齐被控端 DailyTask/app/build.gradle）：
         // - baselineVersion 为正式发版基线号，随功能迭代手工上调
         // - 默认（未设置 BUILD_FLAVOR 或其值不为 release）：自动版本
-        //     versionName = <基线>-<构建来源>-<git短哈希>，如 1.0.0-local-fa96b30
+        //     versionName = <git短哈希>，如 fa96b30（安装时系统「已安装版本」直接显示短哈希，
+        //     ci/local、基线版本、构建时间等完整信息见 App 内「版本信息」弹窗）
         // - 仅当显式 BUILD_FLAVOR=release 时使用固定版本号（正式发版用）
         def baselineVersion = '1.0.0'
 
@@ -86,7 +87,7 @@ android {
             def ymd = cnFormat('yyMMdd', now).toInteger()
             def hh = cnFormat('HH', now).toInteger()
             def mm = cnFormat('mm', now).toInteger()
-            versionName "${baselineVersion}-${buildTag}"
+            versionName gitShort
             versionCode ymd * 1000 + 720 + (hh * 30 + (int) (mm / 2))
         } else {
             // 正式发版：CI 产物保持干净版本号；本机手工打的「正式包」强制带 -local 后缀，
