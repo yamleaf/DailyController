@@ -29,10 +29,9 @@ class AppSettingsActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // targetSdk 36 在 Android 15+ 强制 edge-to-edge：退出，避免 toolbar 标题与状态栏重叠
-        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, true)
         binding = ActivityAppSettingsBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        UiInsets.applyStatusBarPadding(this, binding.appBar)
 
         binding.toolbar.setNavigationOnClickListener { finish() }
 
@@ -80,7 +79,7 @@ class AppSettingsActivity : AppCompatActivity() {
     private fun enableOfflineNotify() {
         OfflineMonitorService.setEnabled(this, true)
         OfflineMonitorService.startCompat(this)
-        Toast.makeText(this, "离线通知已开启", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "设备通知已开启：告警会话缓存约 2 小时内可补收", Toast.LENGTH_SHORT).show()
     }
 
     private fun refreshThemeValue() {

@@ -397,12 +397,13 @@ class OverviewFragment : Fragment(), SnapshotFragment {
     }
 
     /** B5：绘制电池曲线 sparkline + 趋势摘要 + 耗尽预测 */
-    private fun drawBatteryTrend(series: List<BatteryPoint>, currentRuntimeBattery: Int = -1) {
+    private fun drawBatteryTrend(series: List<BatteryPoint>) {
         if (_binding == null) return
         if (series.size < 2) {
             binding.batterySpark.setData(emptyList())
             binding.tvBatteryTrend.text = "数据不足：被控端需常驻运行以采样电量（近 12 小时）"
-            binding.layoutBatteryPredict.visibility = View.GONE
+            binding.tvBatteryPredict.text = "电量预测：数据不足，无法预测"
+            binding.layoutBatteryPredict.visibility = View.VISIBLE
             return
         }
         binding.batterySpark.setData(series.map { it.ts to it.level })
@@ -412,110 +413,22 @@ class OverviewFragment : Fragment(), SnapshotFragment {
         binding.tvBatteryTrend.text = "近 12 小时：$first% → $last%" +
             if (drop > 0) "（掉电 ${drop}%）" else "（电量平稳）"
 
-        // 电量预测：优先使用被控端上报的 BatteryPredictor 结果（与被控端智能预警同一算法，
-        // 预测「降至低电量阈值的时间」），避免控制端本地另算导致与上报值偏差大。
-        // 仅当被控端无预测数据（数据不足 / 充电中）时才回退到本地曲线推算。
-        val level = if (currentRuntimeBattery >= 0) currentRuntimeBattery else last
+        // 电量预测：只信被控端 BatteryPredictor 的有效结果（与智能预警同一算法）。
+        // 无有效预测时直接「数据不足」，不再用本地 sparkline 硬推，避免样本过少/含充电段误算。
         val devicePredictTime = snapshot?.runtime?.get("batteryPredictTime")
         val devicePredictThreshold = snapshot?.runtime?.get("batteryPredictThreshold")
         val devicePredictHas = snapshot?.runtime?.get("batteryPredictHas") == "true"
         val devicePredictCharging = snapshot?.runtime?.get("batteryPredictCharging") == "true"
         val predictText: String = when {
-            devicePredictHas && devicePredictCharging -> "（当前在充电，无耗尽风险）"
-            !devicePredictTime.isNullOrBlank() -> {
+            devicePredictHas && devicePredictCharging -> "电量预测：当前在充电，无耗尽风险"
+            devicePredictHas && !devicePredictTime.isNullOrBlank() -> {
                 val threshold = devicePredictThreshold ?: "30"
-                "预计 $devicePredictTime 降至低电量阈值 ${threshold}%"
+                "电量预测：预计 $devicePredictTime 降至低电量阈值 ${threshold}%"
             }
-            else -> batteryPredictText(series, level)
+            else -> "电量预测：数据不足，无法预测"
         }
-        if (predictText.isBlank()) {
-            binding.layoutBatteryPredict.visibility = View.GONE
-        } else {
-            binding.tvBatteryPredict.text = predictText
-            binding.layoutBatteryPredict.visibility = View.VISIBLE
-        }
-    }
-
-    /**
-     * 计算电量耗尽预测文案。
-     * 用最近的一段纯放电数据（精确排除充电段）拟合掉电速率（%/小时），
-     * 再按当前电量推算预计耗尽时间。
-     *
-     * 算法策略（双窗口）：
-     *   1. 主窗口：从序列末尾往回取「最近一段连续纯放电」数据——最能反映当前使用模式；
-     *      若该段 ≥ 30 分钟则直接用于计算速率。
-     *   2. 回退窗口：若主窗口不足 30 分钟，则扩大到「排除所有充电点后的最近 2 小时」短窗口
-     *      （避免含早期低功耗时段拉低速率）。
-     *   3. 用被控端上报的 [BatteryPoint.charging] 字段精确判定充电点（替代旧版 level≥99 启发式），
-     *      解决"充到 92% 就拔掉"导致整段 12h 数据都被纳入、速率偏低的 bug。
-     */
-    private fun batteryPredictText(series: List<BatteryPoint>, currentLevel: Int): String {
-        if (series.size < 2) return ""
-        val sorted = series.sortedBy { it.ts }
-
-        // 主窗口：最近一段连续纯放电（从末尾往前跳过充电点，再往前找到连续放电段的起点）
-        val latestDischarge = extractLatestDischargeSegment(sorted)
-        if (latestDischarge.size < 2) return ""
-
-        val ratePerHour = {
-            val f = latestDischarge.first()
-            val l = latestDischarge.last()
-            val elapsed = (l.ts - f.ts) / 3600_000.0
-            if (elapsed >= 0.5) (f.level - l.level) / elapsed else fallbackRate(sorted)
-        }()
-
-        if (ratePerHour <= 0) return "（当前在充电或电量上升，无耗尽风险）"
-
-        // 预测降至低电量阈值的时间（与被控端 BatteryPredictor 口径一致，而非耗尽到 0%）
-        val threshold = snapshot?.settings?.firstOrNull { it.key == "lb" }?.value as? Int ?: 30
-        val targetLevel = currentLevel.coerceAtLeast(threshold)
-        val hoursToTarget = (targetLevel - threshold).toDouble() / ratePerHour
-        // 用 Calendar 计算预计到达阈值时间，确保日期进位准确（SimpleDateFormat+Date 在某些 locale 下可能出问题）
-        val cal = java.util.Calendar.getInstance().apply {
-            add(java.util.Calendar.MINUTE, (hoursToTarget * 60).toInt())
-        }
-        val timeText = String.format("%02d-%02d %02d:%02d",
-            cal.get(java.util.Calendar.MONTH) + 1,
-            cal.get(java.util.Calendar.DAY_OF_MONTH),
-            cal.get(java.util.Calendar.HOUR_OF_DAY),
-            cal.get(java.util.Calendar.MINUTE))
-        return when {
-            currentLevel <= 20 -> "⚠️ 电量仅剩 $currentLevel%，预计约 ${"%.1f".format(hoursToTarget)} 小时后（$timeText）降至 ${threshold}%"
-            else -> "预计 ${"%.1f".format(hoursToTarget)} 小时后（约 $timeText）降至低电量阈值 ${threshold}%"
-        }
-    }
-
-    /** 从排序序列末尾提取最近一段连续纯放电（charging=false）的数据 */
-    private fun extractLatestDischargeSegment(sorted: List<BatteryPoint>): List<BatteryPoint> {
-        var endIdx = sorted.lastIndex
-        // 跳过末尾可能的充电点
-        while (endIdx >= 0 && sorted[endIdx].charging) {
-            endIdx--
-        }
-        if (endIdx < 0) return emptyList()
-        // 往前追溯到这段连续放电的起点（遇到充电点或序列头即停）
-        var startIdx = endIdx
-        while (startIdx > 0 && !sorted[startIdx - 1].charging) {
-            startIdx--
-        }
-        return sorted.subList(startIdx, endIdx + 1)
-    }
-
-    /**
-     * 回退窗口：排除所有充电点后，取最近 2 小时的纯放电数据计算速率。
-     * 仅在主窗口连续放电段不足 30 分钟时调用。
-     */
-    private fun fallbackRate(sorted: List<BatteryPoint>): Double {
-        val nowMs = System.currentTimeMillis()
-        val windowMs = 2L * 3600_000L  // 2 小时短窗口
-        // 过滤：只保留非充电 + 在 2 小时窗口内的点
-        val recent = sorted.filter { !it.charging && (nowMs - it.ts <= windowMs) }
-        if (recent.size < 2) return -1.0
-        val f = recent.first()
-        val l = recent.last()
-        val elapsed = (l.ts - f.ts) / 3600_000.0
-        if (elapsed < 0.3) return -1.0  // 至少需要 18 分钟
-        return (f.level - l.level) / elapsed
+        binding.tvBatteryPredict.text = predictText
+        binding.layoutBatteryPredict.visibility = View.VISIBLE
     }
 
     private fun render(s: DeviceSnapshot) {
@@ -547,7 +460,7 @@ class OverviewFragment : Fragment(), SnapshotFragment {
         binding.tvBatteryCharging.text = "充电：${s.runtime["charging"] ?: "--"} · ${s.runtime["temperature"] ?: ""}"
 
         // B5：电池曲线（跨 render 保留）
-        drawBatteryTrend(s.batterySeries, battery)
+        drawBatteryTrend(s.batterySeries)
 
         setChip(binding.chipForeground, "前台服务", s.runtime["foregroundRunning"] == "true")
         setChip(binding.chipScheduler, "任务调度", s.runtime["schedulerRunning"] == "true")

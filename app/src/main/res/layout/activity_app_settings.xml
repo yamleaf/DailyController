@@ -6,6 +6,7 @@
     android:background="@color/md_background">
 
     <com.google.android.material.appbar.AppBarLayout
+        android:id="@+id/appBar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="@drawable/bg_header_gradient"
@@ -166,7 +167,7 @@
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="被控设备事件通知监听"
+                                android:text="常驻订阅告警；进程被杀后约 2 小时内重连可补收（视 Broker）"
                                 android:textAppearance="@style/TextAppearance.Material3.BodySmall"
                                 android:textColor="@color/md_onSurfaceVariant" />
                         </LinearLayout>
