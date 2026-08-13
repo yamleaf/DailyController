@@ -414,16 +414,27 @@ class OverviewFragment : Fragment(), SnapshotFragment {
             if (drop > 0) "（掉电 ${drop}%）" else "（电量平稳）"
 
         // 电量预测：只信被控端 BatteryPredictor 的有效结果（与智能预警同一算法）。
-        // 无有效预测时直接「数据不足」，不再用本地 sparkline 硬推，避免样本过少/含充电段误算。
+        // 已低于阈值时被控端改报「耗尽」预测，避免「0.0 小时后降至阈值」。
         val devicePredictTime = snapshot?.runtime?.get("batteryPredictTime")
         val devicePredictThreshold = snapshot?.runtime?.get("batteryPredictThreshold")
+        val devicePredictHours = snapshot?.runtime?.get("batteryPredictHours")
+        val devicePredictRate = snapshot?.runtime?.get("batteryPredictRate")
         val devicePredictHas = snapshot?.runtime?.get("batteryPredictHas") == "true"
         val devicePredictCharging = snapshot?.runtime?.get("batteryPredictCharging") == "true"
+        val devicePredictExhaust = snapshot?.runtime?.get("batteryPredictExhaust") == "true"
+        val batteryNow = snapshot?.runtime?.get("battery")?.toIntOrNull()
+            ?: if (last in 0..100) last else -1
+        val rateSuffix = devicePredictRate?.takeIf { it.isNotBlank() }?.let { "（耗电 ${it}%/h）" } ?: ""
         val predictText: String = when {
             devicePredictHas && devicePredictCharging -> "电量预测：当前在充电，无耗尽风险"
+            devicePredictHas && devicePredictExhaust -> {
+                val hours = devicePredictHours?.takeIf { it.isNotBlank() } ?: "—"
+                val levelText = if (batteryNow >= 0) "$batteryNow%" else "低电量"
+                "电量预测：电量仅剩 $levelText，预计约 ${hours} 小时后电量耗尽$rateSuffix"
+            }
             devicePredictHas && !devicePredictTime.isNullOrBlank() -> {
                 val threshold = devicePredictThreshold ?: "30"
-                "电量预测：预计 $devicePredictTime 降至低电量阈值 ${threshold}%"
+                "电量预测：预计 $devicePredictTime 降至低电量阈值 ${threshold}%$rateSuffix"
             }
             else -> "电量预测：数据不足，无法预测"
         }
