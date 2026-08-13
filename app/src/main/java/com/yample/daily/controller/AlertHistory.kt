@@ -13,7 +13,8 @@ data class AlertRecord(
     val battery: Int = -1,
     val threshold: Int = -1,
     val stage: Int = 1,
-    val predictedTime: String = ""
+    val predictedTime: String = "",
+    val rid: String = ""        // MQTT 包 rid，用于控制页与后台监测去重
 )
 
 /** 告警历史持久化：按设备维度存 SharedPreferences，最新在前，最多 30 条 */
@@ -33,12 +34,16 @@ object AlertHistory {
         } catch (_: Exception) { emptyList() }
     }
 
-    fun add(ctx: Context, deviceId: String, record: AlertRecord) {
+    /** @return true 表示新写入；同 rid 已存在则跳过并返回 false */
+    @Synchronized
+    fun add(ctx: Context, deviceId: String, record: AlertRecord): Boolean {
         val list = load(ctx, deviceId).toMutableList()
+        if (record.rid.isNotBlank() && list.any { it.rid == record.rid }) return false
         list.add(0, record)
         while (list.size > MAX) list.removeAt(list.size - 1)
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putString(key(deviceId), Gson().toJson(list)).apply()
+        return true
     }
 
     fun clear(ctx: Context, deviceId: String) {
