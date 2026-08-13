@@ -66,10 +66,10 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // targetSdk 36 在 Android 15+ 强制 edge-to-edge：退出，让顶栏（toolbar 时钟）位于状态栏下方，避免与状态栏时间重叠
-        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, true)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        // Android 15+ 强制 edge-to-edge：给 AppBar 加状态栏高度 padding，避免时钟与系统时间重叠
+        UiInsets.applyStatusBarPadding(this, binding.appBarMain)
 
         db = Room.databaseBuilder(this, AppDatabase::class.java, "daily-db")
             .fallbackToDestructiveMigration(dropAllTables = true)
@@ -614,13 +614,20 @@ class MainActivity : AppCompatActivity() {
                     connectionTimeout = 8
                 }
                 client.connect(opts)
+                val ts = System.currentTimeMillis()
+                val rid = UUID.randomUUID().toString()
+                val sign = if (device.sessionSecret.isNotBlank()) {
+                    MqttSigner.sign(
+                        device.sessionSecret, device.deviceId, ts, rid, "", "s", "", MqttPacket.CMD_UNBOUND
+                    )
+                } else ""
                 val packet = MqttPacket(
                     c = MqttPacket.CMD_UNBOUND,
                     f = "",
                     v = PacketValue.StringValue(""),
-                    rid = UUID.randomUUID().toString(),
-                    ts = System.currentTimeMillis(),
-                    sign = ""
+                    rid = rid,
+                    ts = ts,
+                    sign = sign
                 )
                 client.publish(
                     "${MqttPacket.TOPIC_PREFIX}/${device.deviceId}/pair",
