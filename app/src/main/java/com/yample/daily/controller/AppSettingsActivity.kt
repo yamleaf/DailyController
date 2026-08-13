@@ -37,6 +37,8 @@ class AppSettingsActivity : AppCompatActivity() {
 
         binding.rowTheme.setOnClickListener { showThemeChooser() }
         binding.rowVersion.setOnClickListener { showVersionInfo() }
+        // 设置页版本行副标题：只显示 git 短哈希，其余构建信息进弹窗
+        binding.tvVersionSummary.text = BuildConfig.GIT_SHA
 
         // 离线通知开关：默认关闭；开启需通知权限并拉起前台监测服务，关闭则停服务
         binding.switchNotifyOffline.isChecked = OfflineMonitorService.isEnabled(this)
@@ -149,10 +151,10 @@ class AppSettingsActivity : AppCompatActivity() {
         val minSdk = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) appInfo.minSdkVersion else 0
 
         val rows = linkedMapOf(
+            "Git 提交" to BuildConfig.GIT_SHA,
             "版本号" to BuildConfig.VERSION_NAME,
             "Version Code" to BuildConfig.VERSION_CODE.toString(),
             "构建来源" to BuildConfig.BUILD_SOURCE,
-            "Git 提交" to BuildConfig.GIT_SHA,
             "构建时间" to BuildConfig.BUILD_TIME,
             "基线版本" to BuildConfig.BASELINE_VERSION,
             "包名" to BuildConfig.APPLICATION_ID,

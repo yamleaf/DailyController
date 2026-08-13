@@ -242,6 +242,7 @@
                             android:textColor="@color/md_onSurface" />
 
                         <TextView
+                            android:id="@+id/tvVersionSummary"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="@string/settings_version_summary"
