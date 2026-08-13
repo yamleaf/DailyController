@@ -6,6 +6,8 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.google.android.material.timepicker.MaterialTimePicker
+import com.google.android.material.timepicker.TimeFormat
 import com.yample.daily.controller.databinding.DialogMsgChannelBinding
 import com.yample.daily.controller.databinding.DialogSliderBinding
 import com.yample.daily.controller.databinding.FragmentSettingsBinding
@@ -42,9 +44,10 @@ class SettingsFragment : Fragment(), SnapshotFragment {
             "伪息屏" to listOf("pm", "tm", "nc", "ga"),
             "通知转移" to listOf("nt"),
             "反馈方式" to listOf("fd"),
-            "任务" to listOf("sh", "rt", "rh", "tr", "ot"),
-            "界面" to listOf("bh"),
-            "低电量告警" to listOf("lb", "ba", "bw", "bs", "br", "bd")
+            "任务" to listOf("sh", "rt", "rh", "tr", "ot", "bo"),
+            "界面" to listOf("bh", "dp"),
+            "低电量告警" to listOf("lb", "ba", "bw", "bs", "br", "bd"),
+            "诊断" to listOf("lg")
         )
     }
 
@@ -57,7 +60,10 @@ class SettingsFragment : Fragment(), SnapshotFragment {
         super.onViewCreated(view, savedInstanceState)
         settingAdapter = SettingAdapter(settingItems,
             onToggle = { item, on -> handleToggle(item, on) },
-            onEditValue = { item -> showSliderIfNeeded(item) }
+            onEditValue = { item ->
+                if (item.type == "time" || item.key == "bw") showTimePicker(item)
+                else showSliderIfNeeded(item)
+            }
         )
         binding.rvSettings.layoutManager = LinearLayoutManager(requireContext())
         binding.rvSettings.adapter = settingAdapter
@@ -208,6 +214,24 @@ class SettingsFragment : Fragment(), SnapshotFragment {
             return
         }
         onToggle?.invoke(item, on)
+    }
+
+    /** 智能提醒等「当日时间点」：用 MaterialTimePicker，value 为当日分钟数 0~1439 */
+    private fun showTimePicker(item: SettingItem) {
+        val minutes = ((item.value as? Int) ?: 0).coerceIn(0, 1439)
+        val picker = MaterialTimePicker.Builder()
+            .setTimeFormat(TimeFormat.CLOCK_24H)
+            .setTitleText(item.label)
+            .setHour(minutes / 60)
+            .setMinute(minutes % 60)
+            .build()
+        picker.addOnPositiveButtonClickListener {
+            val v = (picker.hour * 60 + picker.minute).coerceIn(0, 1439)
+            item.value = v
+            onIntChange?.invoke(item, v)
+            settingAdapter.notifyDataSetChanged()
+        }
+        picker.show(parentFragmentManager, "setting_time_${item.key}")
     }
 
     private fun showSliderIfNeeded(item: SettingItem) {

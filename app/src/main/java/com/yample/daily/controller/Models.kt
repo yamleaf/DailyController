@@ -35,7 +35,7 @@ data class CalendarDay(
 data class SettingItem(
     val key: String,
     val label: String,
-    val type: String,        // "bool" | "int" | "slider"
+    val type: String,        // "bool" | "int" | "time" | "string"
     var value: Any,
     val writable: Boolean,
     val min: Int? = null,

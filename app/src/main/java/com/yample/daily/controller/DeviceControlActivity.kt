@@ -1232,6 +1232,7 @@ class DeviceControlActivity : AppCompatActivity() {
                 value = when (type) {
                     "bool" -> o.get("value").asBoolean
                     "string" -> o.get("value").asString
+                    // time / int 等数值型：当日分钟数或其它 int
                     else -> runCatching { o.get("value").asInt }.getOrDefault(0)
                 },
                 writable = true,

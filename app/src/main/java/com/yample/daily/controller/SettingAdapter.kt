@@ -44,7 +44,10 @@ class SettingAdapter(
         "bw" to R.drawable.ic_timer,
         "bs" to R.drawable.ic_timer,
         "br" to R.drawable.ic_timer,
-        "bd" to R.drawable.ic_timer
+        "bd" to R.drawable.ic_timer,
+        "bo" to R.drawable.ic_timer,
+        "dp" to R.drawable.ic_device,
+        "lg" to R.drawable.ic_scan
     )
 
     class HeaderViewHolder(view: View) : RecyclerView.ViewHolder(view)
@@ -97,12 +100,28 @@ class SettingAdapter(
                             onToggle(setting, isChecked)
                         }
                     }
+                    "time" -> {
+                        vh.binding.switchSetting.visibility = View.GONE
+                        vh.binding.layoutValue.visibility = View.VISIBLE
+                        val minutes = (setting.value as? Int) ?: 0
+                        vh.binding.tvSettingValue.text =
+                            String.format("%02d:%02d", minutes / 60, minutes % 60)
+                        vh.binding.tvSettingSub.text = "点击选择时间"
+                        vh.binding.layoutValue.setOnClickListener { onEditValue(setting) }
+                    }
                     "int" -> {
                         vh.binding.switchSetting.visibility = View.GONE
                         vh.binding.layoutValue.visibility = View.VISIBLE
                         val v = setting.value as? Int ?: 0
-                        vh.binding.tvSettingValue.text = "$v ${unitFor(setting.key)}"
-                        vh.binding.tvSettingSub.text = "点击拖动调整"
+                        // 兼容旧被控端仍把 bw 标成 int：按当日时间点展示
+                        if (setting.key == "bw") {
+                            vh.binding.tvSettingValue.text =
+                                String.format("%02d:%02d", v / 60, v % 60)
+                            vh.binding.tvSettingSub.text = "点击选择时间"
+                        } else {
+                            vh.binding.tvSettingValue.text = "$v ${unitFor(setting.key)}"
+                            vh.binding.tvSettingSub.text = "点击拖动调整"
+                        }
                         vh.binding.layoutValue.setOnClickListener { onEditValue(setting) }
                     }
                 }
