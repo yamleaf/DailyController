@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- QQ 式左滑操作块：上移/下移（次要色实底） -->
+<!-- QQ 式左滑操作块：分组（次要色实底） -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
     <solid android:color="@color/md_secondary" />

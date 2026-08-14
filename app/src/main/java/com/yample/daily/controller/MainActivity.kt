@@ -8,6 +8,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.room.Room
@@ -48,6 +49,9 @@ class MainActivity : AppCompatActivity() {
     private var currentAdapter: DeviceAdapter? = null
     /** Gson 实例，用于把解绑包序列化为 MQTT 载荷 */
     private val gson = Gson()
+
+    /** 分组选择器里「新建分组」的哨兵值（不会与真实分组名冲突） */
+    private val newGroupSentinel = "\u0000new_group\u0000"
 
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
@@ -311,6 +315,7 @@ class MainActivity : AppCompatActivity() {
         // 搜索/分组重建 adapter 后回填已探测的在线状态，避免状态药丸复位为未知
         onlineState.forEach { (id, state) -> adapter.setOnline(id, state) }
         binding.rvDevices.adapter = adapter
+        attachDragReorder(adapter)
         val empty = filtered.isEmpty()
         // 空状态区分：无设备 / 分组无设备 / 搜索无结果（后两者隐藏「立即扫码」）
         binding.btnEmptyScan.visibility = if (hasQuery || selectedGroup.isNotEmpty()) View.GONE else View.VISIBLE
@@ -322,7 +327,7 @@ class MainActivity : AppCompatActivity() {
             }
             binding.tvEmptySubtitle.text = when {
                 hasQuery -> getString(R.string.search_empty_subtitle, q)
-                selectedGroup.isNotEmpty() -> "在设备列表左滑「编辑」为该分组添加设备"
+                selectedGroup.isNotEmpty() -> "在设备列表左滑「分组」为该分组添加设备"
                 else -> "扫描被控端生成的二维码\n即可远程控制你的打卡设备"
             }
         }
@@ -457,7 +462,7 @@ class MainActivity : AppCompatActivity() {
             onRename = { device -> renameDevice(device) },
             onPin = { device -> togglePin(device) },
             onDelete = { device -> confirmDeleteDevice(device) },
-            onMove = { device, delta -> moveDevice(device, delta) }
+            onGroup = { device -> assignGroup(device) }
         ).also { it.openLayoutForPosition = { pos ->
             binding.rvDevices.findViewHolderForAdapterPosition(pos)
                 ?.itemView as? com.yample.daily.controller.widget.SwipeRevealLayout
@@ -597,23 +602,131 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * 上移/下移：在完整有序列表（pinned DESC, sortOrder ASC）中与相邻项交换 sortOrder 后重查库。
-     * 以全局列表为准（而非当前过滤/搜索视图），边界处直接忽略。
-     */
-    private fun moveDevice(device: DeviceRecord, delta: Int) {
+    // ===================== 长按拖拽排序 =====================
+    // 上移/下移按钮已改为「长按卡片上下拖动」：更符合移动端习惯，也释放左滑面板宽度。
+    // 排序本质仍是 sortOrder 重排 —— 不能只交换两个值：旧版升级（v5→v6 迁移给存量设备统一补 DEFAULT 0）
+    // 会让多项 sortOrder 重复，ORDER BY 无法区分导致排序失效，因此落定后按显示顺序整体重新编号。
+
+    private var dragTouchHelper: ItemTouchHelper? = null
+
+    /** 挂载长按拖拽排序：仅启用上/下拖，横向左滑仍由 SwipeRevealLayout 处理；置顶边界由适配器阻挡 */
+    private fun attachDragReorder(adapter: DeviceAdapter) {
+        if (dragTouchHelper == null) {
+            dragTouchHelper = ItemTouchHelper(object : ItemTouchHelper.Callback() {
+                override fun getMovementFlags(
+                    recyclerView: RecyclerView,
+                    viewHolder: RecyclerView.ViewHolder
+                ): Int = makeMovementFlags(ItemTouchHelper.UP or ItemTouchHelper.DOWN, 0)
+
+                // 长按由卡片监听手动触发 startDrag（整卡可拖，无需拖动手柄）
+                override fun isLongPressDragEnabled(): Boolean = false
+                override fun isItemViewSwipeEnabled(): Boolean = false
+                override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {}
+
+                override fun onMove(
+                    recyclerView: RecyclerView,
+                    viewHolder: RecyclerView.ViewHolder,
+                    target: RecyclerView.ViewHolder
+                ): Boolean {
+                    val current = recyclerView.adapter as? DeviceAdapter ?: return false
+                    return current.onMoveItems(
+                        viewHolder.bindingAdapterPosition,
+                        target.bindingAdapterPosition
+                    )
+                }
+
+                override fun onSelectedChanged(viewHolder: RecyclerView.ViewHolder?, actionState: Int) {
+                    super.onSelectedChanged(viewHolder, actionState)
+                    if (actionState == ItemTouchHelper.ACTION_STATE_DRAG) {
+                        viewHolder?.itemView?.apply {
+                            elevation = 12f
+                            alpha = 0.95f
+                        }
+                    }
+                }
+
+                override fun clearView(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder) {
+                    super.clearView(recyclerView, viewHolder)
+                    viewHolder.itemView.apply {
+                        elevation = 0f
+                        alpha = 1f
+                    }
+                    (recyclerView.adapter as? DeviceAdapter)
+                        ?.currentOrder()?.let { persistOrder(it) }
+                }
+            }).also { it.attachToRecyclerView(binding.rvDevices) }
+        }
+        adapter.itemTouchHelper = dragTouchHelper
+    }
+
+    /** 把列表按显示顺序整体重新编号写库（sortOrder = 顺序下标），保证唯一且与界面顺序一致 */
+    private fun persistOrder(ordered: List<DeviceRecord>) {
         lifecycleScope.launch(Dispatchers.IO) {
-            val ordered = db.deviceDao().getAll()
-            val idx = ordered.indexOfFirst { it.deviceId == device.deviceId }
-            if (idx < 0) return@launch
-            val target = idx + delta
-            if (target < 0 || target >= ordered.size) return@launch
-            val from = ordered[idx]
-            val to = ordered[target]
-            db.deviceDao().update(from.copy(sortOrder = to.sortOrder))
-            db.deviceDao().update(to.copy(sortOrder = from.sortOrder))
+            ordered.forEachIndexed { index, item ->
+                if (item.sortOrder != index) {
+                    db.deviceDao().update(item.copy(sortOrder = index))
+                }
+            }
             withContext(Dispatchers.Main) { loadDevices() }
         }
+    }
+
+    // ===================== 左滑操作面板的「分组」按钮 =====================
+    // 分组选择器：已有分组 + 未分组 + 新建分组，选中即写入并刷新（统一化列表弹窗）
+    private fun assignGroup(device: DeviceRecord) {
+        val groups = deviceList.map { it.group }.filter { it.isNotBlank() }.distinct().sorted()
+        val labels = ArrayList<String>()
+        labels.add("未分组")
+        labels.addAll(groups)
+        labels.add("＋ 新建分组…")
+        UnifiedDialogKit.showMenu(
+            ctx = this,
+            title = "「${device.name}」分组",
+            items = labels,
+            onSelect = { index ->
+                val value = when {
+                    index == 0 -> ""
+                    index == labels.size - 1 -> newGroupSentinel
+                    else -> groups[index - 1]
+                }
+                if (value == newGroupSentinel) {
+                    showCreateGroupDialog(device)
+                } else {
+                    applyGroup(device, value)
+                }
+            }
+        )
+    }
+
+    /** 直接写入设备分组并刷新列表 */
+    private fun applyGroup(device: DeviceRecord, group: String) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            db.deviceDao().update(device.copy(group = group))
+            withContext(Dispatchers.Main) { loadDevices() }
+        }
+    }
+
+    /** 新建分组：复用「重命名分组」的单输入框弹窗，创建后把设备归入新分组 */
+    private fun showCreateGroupDialog(device: DeviceRecord) {
+        val dlgBinding = com.yample.daily.controller.databinding.DialogGroupBinding.inflate(layoutInflater)
+        dlgBinding.etGroupName.setText("")
+        UnifiedDialogKit.showForm(
+            ctx = this,
+            contentView = dlgBinding.root,
+            title = "新建分组",
+            message = "输入新分组名称，将「${device.name}」归入该分组",
+            positiveText = "创建",
+            negativeText = "取消",
+            onConfirm = {
+                val group = dlgBinding.etGroupName.text.toString().trim()
+                if (group.isEmpty()) {
+                    false
+                } else {
+                    applyGroup(device, group)
+                    true
+                }
+            }
+        )
     }
 
     // ===================== 左滑操作面板的「删除」按钮 =====================

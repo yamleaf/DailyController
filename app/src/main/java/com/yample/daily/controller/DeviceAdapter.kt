@@ -1,21 +1,29 @@
 package com.yample.daily.controller
 
+import android.view.HapticFeedbackConstants
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.RecyclerView
-import androidx.recyclerview.widget.ListAdapter
 import com.yample.daily.controller.widget.SwipeRevealLayout
 
+/**
+ * 设备列表适配器。
+ * 用可变 ArrayList 承载数据以支持长按拖拽就地重排（主界面每次重建适配器，ListAdapter 的 Diff 无从生效；
+ * 且 ItemTouchHelper 拖拽需要可变列表 + notifyItemMoved 就地更新）。
+ */
 class DeviceAdapter(
     devices: List<DeviceRecord>,
     private val onClick: (DeviceRecord) -> Unit,
     private val onRename: (DeviceRecord) -> Unit,
     private val onPin: (DeviceRecord) -> Unit,
     private val onDelete: (DeviceRecord) -> Unit,
-    private val onMove: (DeviceRecord, Int) -> Unit
-) : ListAdapter<DeviceRecord, DeviceAdapter.ViewHolder>(DIFF_CALLBACK) {
+    private val onGroup: (DeviceRecord) -> Unit
+) : RecyclerView.Adapter<DeviceAdapter.ViewHolder>() {
+
+    /** 设备列表：与界面顺序一致，拖拽时就地移动 */
+    private val items = ArrayList<DeviceRecord>()
 
     /** 在线状态：true=在线 / false=离线 / null=未知（3s 内未收到 retained 状态） */
     private val onlineStates = mutableMapOf<String, Boolean?>()
@@ -26,12 +34,34 @@ class DeviceAdapter(
     /** 由 MainActivity 注入：position → SwipeRevealLayout 的查找器（避免 Adapter 持有 View 引用） */
     var openLayoutForPosition: ((Int) -> SwipeRevealLayout?)? = null
 
+    /** 由 MainActivity 注入：长按卡片时调用 startDrag 启动拖拽的 ItemTouchHelper */
+    var itemTouchHelper: ItemTouchHelper? = null
+
     class ViewHolder(val binding: com.yample.daily.controller.databinding.ItemDeviceBinding) :
         RecyclerView.ViewHolder(binding.root)
 
     init {
-        // 防御性拷贝：避免外部后续修改同一 List 实例影响适配器内部状态
-        submitList(ArrayList(devices))
+        items.addAll(devices)
+    }
+
+    override fun getItemCount(): Int = items.size
+
+    fun getItem(position: Int): DeviceRecord = items[position]
+
+    /** 拖拽结束时供外部读取当前顺序（落定写库用） */
+    fun currentOrder(): List<DeviceRecord> = items.toList()
+
+    /**
+     * 拖拽过程中把 [from] 位置的项移到 [to]（就地更新 + notifyItemMoved 驱动换位动画）。
+     * 置顶区与非置顶区交界处不允许拖拽跨越（置顶始终置前）。
+     */
+    fun onMoveItems(from: Int, to: Int): Boolean {
+        if (from == to) return false
+        if (from < 0 || from >= items.size || to < 0 || to >= items.size) return false
+        if (items[from].pinned != items[to].pinned) return false
+        items.add(to, items.removeAt(from))
+        notifyItemMoved(from, to)
+        return true
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -69,25 +99,17 @@ class DeviceAdapter(
                 onClick(device)
             }
         }
-        // 重命名：长按卡片 + 左滑面板「编辑」两种入口
+        // 长按整卡：启动拖拽排序（重命名入口让位，重命名仅保留面板「编辑」按钮）
         binding.card.setOnLongClickListener {
             closeAll()
-            onRename(device)
+            holder.itemView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            itemTouchHelper?.startDrag(holder)
             true
         }
-        // 左滑操作面板（QQ 式色块）：上移 / 下移 / 置顶 / 编辑（重命名）/ 删除
-        // 上移下移仅在对应方向有相邻设备时可用（disabled 置灰），避免空转
-        binding.btnActionMoveUp.isEnabled = position > 0
-        binding.btnActionMoveUp.alpha = if (position > 0) 1f else 0.4f
-        binding.btnActionMoveDown.isEnabled = position < itemCount - 1
-        binding.btnActionMoveDown.alpha = if (position < itemCount - 1) 1f else 0.4f
-        binding.btnActionMoveUp.setOnClickListener {
+        // 左滑操作面板（QQ 式色块）：分组 / 置顶 / 编辑（重命名）/ 删除
+        binding.btnActionGroup.setOnClickListener {
             closeAll()
-            onMove(device, -1)
-        }
-        binding.btnActionMoveDown.setOnClickListener {
-            closeAll()
-            onMove(device, 1)
+            onGroup(device)
         }
         binding.btnActionPin.text = if (device.pinned) "取消置顶" else "置顶"
         binding.btnActionPin.setOnClickListener {
@@ -103,17 +125,21 @@ class DeviceAdapter(
             onDelete(device)
         }
         // 展开互斥：本 item 展开时收起其他已展开的 item
+        // 回调里用 holder.bindingAdapterPosition 取实时位置（列表变更后 onBindViewHolder 形参 position 可能过期）
         binding.swipeRevealLayout.onStateChange = { open ->
-            if (open) {
-                val prev = openPosition
-                if (prev != position) {
-                    if (prev != RecyclerView.NO_POSITION) {
-                        openLayoutForPosition?.invoke(prev)?.close()
+            val pos = holder.bindingAdapterPosition
+            if (pos != RecyclerView.NO_POSITION) {
+                if (open) {
+                    val prev = openPosition
+                    if (prev != pos) {
+                        if (prev != RecyclerView.NO_POSITION) {
+                            openLayoutForPosition?.invoke(prev)?.close()
+                        }
+                        openPosition = pos
                     }
-                    openPosition = position
+                } else {
+                    if (openPosition == pos) openPosition = RecyclerView.NO_POSITION
                 }
-            } else {
-                if (openPosition == position) openPosition = RecyclerView.NO_POSITION
             }
         }
         // 复用复位：非展开态恢复卡片位置（不触发动画避免闪烁）
@@ -131,25 +157,7 @@ class DeviceAdapter(
     /** A1：回填某设备的在线状态并刷新对应卡片（主线程调用） */
     fun setOnline(deviceId: String, online: Boolean?) {
         onlineStates[deviceId] = online
-        val pos = currentList.indexOfFirst { it.deviceId == deviceId }
+        val pos = items.indexOfFirst { it.deviceId == deviceId }
         if (pos >= 0) notifyItemChanged(pos)
-    }
-
-    companion object {
-        val DIFF_CALLBACK = object : DiffUtil.ItemCallback<DeviceRecord>() {
-            override fun areItemsTheSame(old: DeviceRecord, new: DeviceRecord): Boolean {
-                // 以设备 deviceId 作为稳定标识，决定 item 是否同一对象（决定复用/动画）
-                return old.deviceId == new.deviceId
-            }
-
-            override fun areContentsTheSame(old: DeviceRecord, new: DeviceRecord): Boolean {
-                // 界面展示受 name / 配对状态(sessionSecret+bound) / 置顶状态(pinned) 影响；在线色由适配器 onlineStates 驱动，不在此比较
-                return old.name == new.name
-                    && old.sessionSecret == new.sessionSecret
-                    && old.bound == new.bound
-                    && old.pinned == new.pinned
-                    && old.group == new.group
-            }
-        }
     }
 }
