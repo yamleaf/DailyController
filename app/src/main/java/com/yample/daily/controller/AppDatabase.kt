@@ -5,7 +5,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [DeviceRecord::class, ServerlessBackend::class], version = 5, exportSchema = false)
+@Database(entities = [DeviceRecord::class, ServerlessBackend::class], version = 6, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun deviceDao(): DeviceDao
     abstract fun serverlessBackendDao(): ServerlessBackendDao
@@ -24,6 +24,13 @@ abstract class AppDatabase : RoomDatabase() {
                         "`sortOrder` INTEGER NOT NULL, " +
                         "`updatedAt` INTEGER NOT NULL)"
                 )
+            }
+        }
+
+        /** v5 → v6：devices 表新增 sortOrder 列（上移/下移手动排序） */
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `devices` ADD COLUMN `sortOrder` INTEGER NOT NULL DEFAULT 0")
             }
         }
     }

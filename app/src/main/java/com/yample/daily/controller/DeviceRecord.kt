@@ -15,5 +15,6 @@ data class DeviceRecord(
     val pairingToken: String,   // 配对令牌（握手成功后清空）
     val bound: Boolean,
     val pinned: Boolean = false, // QQ 式置顶：置顶设备排在列表最前
-    val group: String = ""       // 设备分组（空 = 未分组）
+    val group: String = "",       // 设备分组（空 = 未分组）
+    val sortOrder: Int = 0        // 手动排序序号：同置顶级别内按此升序排列（上移/下移交换）
 ) : Serializable

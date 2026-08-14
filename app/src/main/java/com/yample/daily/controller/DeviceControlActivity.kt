@@ -176,7 +176,7 @@ class DeviceControlActivity : AppCompatActivity() {
         val deviceId = intent.getStringExtra("deviceId")
         if (deviceId.isNullOrBlank()) { finish(); return }
         db = Room.databaseBuilder(this, AppDatabase::class.java, "daily-db")
-            .addMigrations(AppDatabase.MIGRATION_4_5)
+            .addMigrations(AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6)
             .fallbackToDestructiveMigration(dropAllTables = true).build()
         val loaded = runBlocking(Dispatchers.IO) { db.deviceDao().getById(deviceId) }
         if (loaded == null) {

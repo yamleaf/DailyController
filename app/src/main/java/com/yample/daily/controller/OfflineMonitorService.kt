@@ -171,7 +171,7 @@ class OfflineMonitorService : Service() {
     override fun onCreate() {
         super.onCreate()
         db = Room.databaseBuilder(applicationContext, AppDatabase::class.java, "daily-db")
-            .addMigrations(AppDatabase.MIGRATION_4_5)
+            .addMigrations(AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6)
             .fallbackToDestructiveMigration(dropAllTables = true)
             .build()
     }

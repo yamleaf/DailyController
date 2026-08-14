@@ -72,7 +72,7 @@ class MainActivity : AppCompatActivity() {
         UiInsets.applyStatusBarPadding(this, binding.appBarMain)
 
         db = Room.databaseBuilder(this, AppDatabase::class.java, "daily-db")
-            .addMigrations(AppDatabase.MIGRATION_4_5)
+            .addMigrations(AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6)
             .fallbackToDestructiveMigration(dropAllTables = true)
             .build()
 
@@ -456,7 +456,8 @@ class MainActivity : AppCompatActivity() {
             },
             onRename = { device -> renameDevice(device) },
             onPin = { device -> togglePin(device) },
-            onDelete = { device -> confirmDeleteDevice(device) }
+            onDelete = { device -> confirmDeleteDevice(device) },
+            onMove = { device, delta -> moveDevice(device, delta) }
         ).also { it.openLayoutForPosition = { pos ->
             binding.rvDevices.findViewHolderForAdapterPosition(pos)
                 ?.itemView as? com.yample.daily.controller.widget.SwipeRevealLayout
@@ -529,6 +530,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun addDevice(payload: BindingPayload, navigate: Boolean = false) {
         lifecycleScope.launch(Dispatchers.IO) {
+            // 新建设备追加到非置顶区末尾：sortOrder = 当前最大序号 + 1
+            val maxOrder = db.deviceDao().getAll().maxOfOrNull { it.sortOrder } ?: -1
             val device = DeviceRecord(
                 deviceId = payload.deviceId,
                 name = "设备 ${payload.deviceId}",
@@ -537,7 +540,8 @@ class MainActivity : AppCompatActivity() {
                 ctlPass = payload.ctlPass,
                 sessionSecret = "",
                 pairingToken = payload.pairingToken,
-                bound = false
+                bound = false,
+                sortOrder = maxOrder + 1
             )
             db.deviceDao().insert(device)
             withContext(Dispatchers.Main) {
@@ -581,7 +585,33 @@ class MainActivity : AppCompatActivity() {
     /** 置顶 / 取消置顶：翻转 pinned 标记并刷新列表（Room @Update + 列表按 pinned 排序） */
     private fun togglePin(device: DeviceRecord) {
         lifecycleScope.launch(Dispatchers.IO) {
-            db.deviceDao().update(device.copy(pinned = !device.pinned))
+            // 取消置顶时追加到非置顶区末尾（sortOrder 旧的可能是历史序号，直接放开会掉到列表中间）
+            val unpinAppend = if (device.pinned) {
+                val max = db.deviceDao().getAll().maxOfOrNull { it.sortOrder } ?: -1
+                max + 1
+            } else {
+                device.sortOrder
+            }
+            db.deviceDao().update(device.copy(pinned = !device.pinned, sortOrder = unpinAppend))
+            withContext(Dispatchers.Main) { loadDevices() }
+        }
+    }
+
+    /**
+     * 上移/下移：在完整有序列表（pinned DESC, sortOrder ASC）中与相邻项交换 sortOrder 后重查库。
+     * 以全局列表为准（而非当前过滤/搜索视图），边界处直接忽略。
+     */
+    private fun moveDevice(device: DeviceRecord, delta: Int) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val ordered = db.deviceDao().getAll()
+            val idx = ordered.indexOfFirst { it.deviceId == device.deviceId }
+            if (idx < 0) return@launch
+            val target = idx + delta
+            if (target < 0 || target >= ordered.size) return@launch
+            val from = ordered[idx]
+            val to = ordered[target]
+            db.deviceDao().update(from.copy(sortOrder = to.sortOrder))
+            db.deviceDao().update(to.copy(sortOrder = from.sortOrder))
             withContext(Dispatchers.Main) { loadDevices() }
         }
     }

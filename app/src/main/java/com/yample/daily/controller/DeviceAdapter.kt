@@ -13,7 +13,8 @@ class DeviceAdapter(
     private val onClick: (DeviceRecord) -> Unit,
     private val onRename: (DeviceRecord) -> Unit,
     private val onPin: (DeviceRecord) -> Unit,
-    private val onDelete: (DeviceRecord) -> Unit
+    private val onDelete: (DeviceRecord) -> Unit,
+    private val onMove: (DeviceRecord, Int) -> Unit
 ) : ListAdapter<DeviceRecord, DeviceAdapter.ViewHolder>(DIFF_CALLBACK) {
 
     /** 在线状态：true=在线 / false=离线 / null=未知（3s 内未收到 retained 状态） */
@@ -74,7 +75,20 @@ class DeviceAdapter(
             onRename(device)
             true
         }
-        // 左滑操作面板（QQ 式色块）：置顶 / 编辑（重命名）/ 删除
+        // 左滑操作面板（QQ 式色块）：上移 / 下移 / 置顶 / 编辑（重命名）/ 删除
+        // 上移下移仅在对应方向有相邻设备时可用（disabled 置灰），避免空转
+        binding.btnActionMoveUp.isEnabled = position > 0
+        binding.btnActionMoveUp.alpha = if (position > 0) 1f else 0.4f
+        binding.btnActionMoveDown.isEnabled = position < itemCount - 1
+        binding.btnActionMoveDown.alpha = if (position < itemCount - 1) 1f else 0.4f
+        binding.btnActionMoveUp.setOnClickListener {
+            closeAll()
+            onMove(device, -1)
+        }
+        binding.btnActionMoveDown.setOnClickListener {
+            closeAll()
+            onMove(device, 1)
+        }
         binding.btnActionPin.text = if (device.pinned) "取消置顶" else "置顶"
         binding.btnActionPin.setOnClickListener {
             closeAll()
