@@ -148,6 +148,8 @@ dependencies {
     
     // MQTT
     implementation 'org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.2.5'
+    // HTTP（Serverless API 客户端管理）
+    implementation 'com.squareup.okhttp3:okhttp:5.4.0'
     // QR
     implementation 'com.journeyapps:zxing-android-embedded:4.3.0'
     // Room

@@ -39,6 +39,11 @@
             android:exported="false"
             android:screenOrientation="portrait" />
 
+        <activity
+            android:name=".ServerlessManagerActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
         <service
             android:name=".OfflineMonitorService"
             android:exported="false"

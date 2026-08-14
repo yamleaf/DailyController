@@ -72,6 +72,7 @@ class MainActivity : AppCompatActivity() {
         UiInsets.applyStatusBarPadding(this, binding.appBarMain)
 
         db = Room.databaseBuilder(this, AppDatabase::class.java, "daily-db")
+            .addMigrations(AppDatabase.MIGRATION_4_5)
             .fallbackToDestructiveMigration(dropAllTables = true)
             .build()
 
@@ -100,6 +101,16 @@ class MainActivity : AppCompatActivity() {
         binding.btnHeroSettings.setOnClickListener {
             startActivity(Intent(this, AppSettingsActivity::class.java))
         }
+        // 顶栏菜单：客户端管理（配置多个后台并管理在线客户端）
+        binding.toolbarMain.setOnMenuItemClickListener { item ->
+            if (item.itemId == R.id.action_client_manager) {
+                startActivity(Intent(this, ServerlessManagerActivity::class.java))
+                true
+            } else {
+                false
+            }
+        }
+        binding.toolbarMain.inflateMenu(R.menu.menu_main)
         // 统计数字初始值（loadDevices 后会更新）
         binding.tvStatOnline.text = "0"
         binding.tvStatTotal.text = "0"

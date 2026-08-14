@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/md_background">
+
+    <com.google.android.material.appbar.AppBarLayout
+        android:id="@+id/appBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@drawable/bg_header_gradient"
+        app:elevation="0dp">
+
+        <com.google.android.material.appbar.MaterialToolbar
+            android:id="@+id/toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="?attr/actionBarSize"
+            android:title="客户端管理"
+            app:navigationIcon="@drawable/ic_back"
+            app:navigationIconTint="@color/on_header"
+            app:subtitleTextColor="@color/on_header"
+            app:titleTextColor="@color/on_header" />
+
+    </com.google.android.material.appbar.AppBarLayout>
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        app:layout_behavior="@string/appbar_scrolling_view_behavior">
+
+        <!-- 后台列表页 -->
+        <LinearLayout
+            android:id="@+id/backendPage"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingHorizontal="@dimen/dp_16"
+                android:paddingTop="@dimen/dp_8"
+                android:paddingBottom="@dimen/dp_4"
+                android:text="配置多个 EMQX Serverless 后台，每个后台对应一个 broker 的在线客户端"
+                android:textColor="@color/md_onSurfaceVariant"
+                android:textSize="@dimen/sp_13" />
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rvBackends"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:clipToPadding="false"
+                android:paddingBottom="96dp"
+                android:paddingTop="@dimen/dp_4" />
+
+            <!-- 空状态 -->
+            <LinearLayout
+                android:id="@+id/emptyBackend"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:padding="@dimen/dp_32"
+                android:visibility="gone">
+
+                <ImageView
+                    android:layout_width="@dimen/size_120"
+                    android:layout_height="@dimen/size_120"
+                    android:src="@drawable/ic_server"
+                    android:contentDescription="@null"
+                    app:tint="@color/md_outline" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/dp_16"
+                    android:text="还没有配置后台"
+                    android:textColor="@color/md_onSurface"
+                    android:textSize="@dimen/sp_18"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/dp_8"
+                    android:gravity="center"
+                    android:text="点击右下角「＋ 添加后台」\n填入 EMQX Serverless 的 API 地址、AppID、AppSecret"
+                    android:textColor="@color/md_onSurfaceVariant"
+                    android:textSize="@dimen/sp_14" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- 客户端管理页 -->
+        <LinearLayout
+            android:id="@+id/clientPage"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:id="@+id/clientHeader"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingHorizontal="@dimen/dp_16"
+                android:paddingTop="@dimen/dp_8">
+
+                <TextView
+                    android:id="@+id/btnSwitchBackend"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/bg_chip"
+                    android:drawableEnd="@drawable/ic_chevron_down"
+                    android:drawablePadding="4dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:paddingHorizontal="@dimen/dp_12"
+                    android:paddingVertical="6dp"
+                    android:text="后台"
+                    android:textColor="@color/md_onSurfaceVariant"
+                    android:textSize="@dimen/sp_13" />
+
+                <TextView
+                    android:id="@+id/tvClientTitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="@dimen/dp_10"
+                    android:layout_weight="1"
+                    android:text="在线客户端"
+                    android:textColor="@color/md_onSurfaceVariant"
+                    android:textSize="@dimen/sp_13" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnRefresh"
+                    style="@style/Widget.Material3.Button.TextButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="刷新"
+                    android:textColor="@color/md_primary" />
+            </LinearLayout>
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rvClients"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:clipToPadding="false"
+                android:paddingBottom="96dp"
+                android:paddingTop="@dimen/dp_4" />
+
+            <TextView
+                android:id="@+id/emptyClient"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:gravity="center"
+                android:padding="@dimen/dp_32"
+                android:text="当前没有在线客户端"
+                android:textColor="@color/md_onSurfaceVariant"
+                android:textSize="@dimen/sp_14"
+                android:visibility="gone" />
+        </LinearLayout>
+
+    </FrameLayout>
+
+    <com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton
+        android:id="@+id/fabAddBackend"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_margin="@dimen/dp_20"
+        android:text="添加后台"
+        android:textColor="@color/md_onPrimaryContainer"
+        app:backgroundTint="@color/md_primaryContainer"
+        app:elevation="@dimen/elev_fab"
+        app:icon="@drawable/ic_add"
+        app:iconTint="@color/md_onPrimaryContainer"
+        app:layout_anchor="@id/rvBackends"
+        app:layout_anchorGravity="bottom|end"
+        app:rippleColor="@color/md_primary" />
+
+</androidx.coordinatorlayout.widget.CoordinatorLayout>
