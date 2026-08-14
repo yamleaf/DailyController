@@ -304,7 +304,7 @@ class SettingsFragment : Fragment(), SnapshotFragment {
     }
 
     /** 屏幕模式（镜像自被控端）：0 伪息屏 / 1 息屏 / 2 常亮；
-     * 选择「息屏」需先二次确认——可能导致任务无法正常执行 */
+     * 选择「息屏」需先弹完整提示确认（三步前置设置 + 风险声明），确认后才应用 */
     private fun showScreenModeDialog(item: SettingItem) {
         if (!item.writable) {
             android.widget.Toast.makeText(
@@ -326,13 +326,15 @@ class SettingsFragment : Fragment(), SnapshotFragment {
             options,
             current
         ) { which ->
-            // 选择「息屏」时提醒可能影响打卡等任务正常执行
-            if (which == 1 && which != current) {
-                UnifiedDialogKit.showWarning(
+            // 选择「息屏」：高风险切换，弹与被控端一致的完整提示（三步前置设置 + 风险声明），确认后才应用
+            if (which == 1) {
+                UnifiedDialogKit.showConfirm(
                     requireContext(),
-                    "选择「息屏」？",
-                    "息屏后系统将允许屏幕按超时自然灭屏，可能导致打卡任务异常或延迟。\n\n确定要切换到息屏吗？",
-                    confirmText = "仍要切换",
+                    "确定使用息屏模式？",
+                    "为保证打卡任务正常进行，请先完成以下设置：\n1. 关闭锁屏密码；\n2. 打开开发者选项，开启「直接进入系统」选项；\n3. 关闭开发者选项。\n\n⚠ 息屏模式下，不能确保任务一定能正常执行，确定使用前，请充分测试验证。",
+                    confirmText = "确认使用",
+                    cancelText = "取消",
+                    icon = UnifiedDialogKit.IconType.WARNING,
                     onCancel = { settingAdapter.notifyDataSetChanged() },
                     onConfirm = {
                         item.value = which
