@@ -1235,7 +1235,7 @@ class DeviceControlActivity : AppCompatActivity() {
                     // time / int 等数值型：当日分钟数或其它 int
                     else -> runCatching { o.get("value").asInt }.getOrDefault(0)
                 },
-                writable = true,
+                writable = o.get("writable")?.takeIf { it.isJsonPrimitive }?.asBoolean ?: true,
                 min = o.get("min")?.takeIf { it.isJsonPrimitive }?.asInt,
                 max = o.get("max")?.takeIf { it.isJsonPrimitive }?.asInt,
                 step = o.get("step")?.takeIf { it.isJsonPrimitive }?.asInt,

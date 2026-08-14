@@ -26,6 +26,7 @@ class SettingAdapter(
     private val iconMap = mapOf(
         "ps" to R.drawable.ic_power_save,
         "pm" to R.drawable.ic_power,
+        "sm" to R.drawable.ic_power,
         "nc" to R.drawable.ic_device,
         "nt" to R.drawable.ic_scan,
         "fd" to R.drawable.ic_power,
@@ -82,7 +83,9 @@ class SettingAdapter(
             is SettingListItem.Item -> {
                 val vh = holder as ItemViewHolder
                 val setting = item.setting
+                val enabled = setting.writable
                 vh.binding.tvSettingLabel.text = setting.label
+                vh.binding.root.alpha = if (enabled) 1f else 0.45f
                 val icon = iconMap[setting.key]
                 if (icon != null) vh.binding.imgSettingIcon.setImageResource(icon)
                 else vh.binding.imgSettingIcon.setImageResource(R.drawable.ic_device)
@@ -94,6 +97,7 @@ class SettingAdapter(
                         val on = setting.value as? Boolean ?: false
                         vh.binding.switchSetting.setOnCheckedChangeListener(null)
                         vh.binding.switchSetting.isChecked = on
+                        vh.binding.switchSetting.isEnabled = enabled
                         vh.binding.tvSettingSub.text = if (on) "已开启" else "已关闭"
                         vh.binding.switchSetting.setOnCheckedChangeListener { _, isChecked ->
                             setting.value = isChecked
@@ -107,26 +111,49 @@ class SettingAdapter(
                         vh.binding.tvSettingValue.text =
                             String.format("%02d:%02d", minutes / 60, minutes % 60)
                         vh.binding.tvSettingSub.text = "点击选择时间"
-                        vh.binding.layoutValue.setOnClickListener { onEditValue(setting) }
+                        if (enabled) {
+                            vh.binding.layoutValue.setOnClickListener { onEditValue(setting) }
+                        } else {
+                            vh.binding.layoutValue.setOnClickListener(null)
+                            vh.binding.layoutValue.isClickable = false
+                        }
                     }
                     "int" -> {
                         vh.binding.switchSetting.visibility = View.GONE
                         vh.binding.layoutValue.visibility = View.VISIBLE
                         val v = setting.value as? Int ?: 0
-                        // 兼容旧被控端仍把 bw 标成 int：按当日时间点展示
-                        if (setting.key == "bw") {
-                            vh.binding.tvSettingValue.text =
-                                String.format("%02d:%02d", v / 60, v % 60)
-                            vh.binding.tvSettingSub.text = "点击选择时间"
+                        if (setting.key == "sm") {
+                            vh.binding.tvSettingValue.text = screenModeLabel(v)
+                            vh.binding.tvSettingSub.text =
+                                if (enabled) "点击切换屏幕模式" else "伪息屏开启时由伪息屏策略接管，不可修改"
                         } else {
-                            vh.binding.tvSettingValue.text = "$v ${unitFor(setting.key)}"
-                            vh.binding.tvSettingSub.text = "点击拖动调整"
+                            // 兼容旧被控端仍把 bw 标成 int：按当日时间点展示
+                            if (setting.key == "bw") {
+                                vh.binding.tvSettingValue.text =
+                                    String.format("%02d:%02d", v / 60, v % 60)
+                                vh.binding.tvSettingSub.text = "点击选择时间"
+                            } else {
+                                vh.binding.tvSettingValue.text = "$v ${unitFor(setting.key)}"
+                                vh.binding.tvSettingSub.text = "点击拖动调整"
+                            }
                         }
-                        vh.binding.layoutValue.setOnClickListener { onEditValue(setting) }
+                        // 注意：setOnClickListener 会把 clickable 置回 true，禁用时必须清 listener
+                        if (enabled) {
+                            vh.binding.layoutValue.setOnClickListener { onEditValue(setting) }
+                        } else {
+                            vh.binding.layoutValue.setOnClickListener(null)
+                            vh.binding.layoutValue.isClickable = false
+                        }
                     }
                 }
             }
         }
+    }
+
+    private fun screenModeLabel(v: Int): String = when (v) {
+        1 -> "息屏"
+        2 -> "常亮"
+        else -> "伪息屏"
     }
 
     private fun unitFor(key: String): String = when (key) {

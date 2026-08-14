@@ -41,7 +41,7 @@ class SettingsFragment : Fragment(), SnapshotFragment {
         private val SETTING_GROUPS = linkedMapOf(
             "远程控制" to listOf("re"),
             "省电模式" to listOf("ps"),
-            "伪息屏" to listOf("pm", "tm", "nc", "ga"),
+            "伪息屏" to listOf("pm", "sm", "tm", "nc", "ga"),
             "通知转移" to listOf("nt"),
             "反馈方式" to listOf("fd"),
             "任务" to listOf("sh", "rt", "rh", "tr", "ot", "bo"),
@@ -62,6 +62,7 @@ class SettingsFragment : Fragment(), SnapshotFragment {
             onToggle = { item, on -> handleToggle(item, on) },
             onEditValue = { item ->
                 if (item.type == "time" || item.key == "bw") showTimePicker(item)
+                else if (item.key == "sm") showScreenModeDialog(item)
                 else showSliderIfNeeded(item)
             }
         )
@@ -300,6 +301,51 @@ class SettingsFragment : Fragment(), SnapshotFragment {
                 true
             }
         )
+    }
+
+    /** 屏幕模式（镜像自被控端）：0 伪息屏 / 1 息屏 / 2 常亮；
+     * 选择「息屏」需先二次确认——可能导致任务无法正常执行 */
+    private fun showScreenModeDialog(item: SettingItem) {
+        if (!item.writable) {
+            android.widget.Toast.makeText(
+                requireContext(),
+                "伪息屏开启时由伪息屏策略接管，不可修改屏幕模式",
+                android.widget.Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+        val current = ((item.value as? Int) ?: 0).coerceIn(0, 2)
+        val options = listOf(
+            "伪息屏：前台无操作达到延迟后自动盖全黑蒙层",
+            "息屏：允许系统按超时自然灭屏（可能导致任务无法正常执行）",
+            "常亮：保持亮屏，阻止系统自动灭屏"
+        )
+        UnifiedDialogKit.showSingleChoice(
+            requireContext(),
+            item.label,
+            options,
+            current
+        ) { which ->
+            // 选择「息屏」时提醒可能影响打卡等任务正常执行
+            if (which == 1 && which != current) {
+                UnifiedDialogKit.showWarning(
+                    requireContext(),
+                    "选择「息屏」？",
+                    "息屏后系统将允许屏幕按超时自然灭屏，可能导致打卡任务异常或延迟。\n\n确定要切换到息屏吗？",
+                    confirmText = "仍要切换",
+                    onCancel = { settingAdapter.notifyDataSetChanged() },
+                    onConfirm = {
+                        item.value = which
+                        onIntChange?.invoke(item, which)
+                        settingAdapter.notifyDataSetChanged()
+                    }
+                )
+            } else {
+                item.value = which
+                onIntChange?.invoke(item, which)
+                settingAdapter.notifyDataSetChanged()
+            }
+        }
     }
 
     private fun unitFor(key: String): String = when (key) {
