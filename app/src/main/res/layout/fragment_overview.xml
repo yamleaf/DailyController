@@ -653,7 +653,23 @@ android:paddingStart="16dp"
                         android:id="@+id/chipServiceRun"
                         style="@style/InfoChip"
                         android:layout_weight="1"
-                        android:text="运行时长" />
+                        android:text="服务运行" />
+
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:weightSum="1">
+
+                    <TextView
+                        android:id="@+id/chipAppRun"
+                        style="@style/InfoChip"
+                        android:layout_weight="1"
+                        android:text="进程运行" />
 
                 </LinearLayout>
 

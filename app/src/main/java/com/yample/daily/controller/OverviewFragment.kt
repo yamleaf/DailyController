@@ -483,8 +483,10 @@ class OverviewFragment : Fragment(), SnapshotFragment {
         val loopOn = s.settings.firstOrNull { it.key == Protocol.FIELD_TASK_AUTO_RECYCLE }?.value as? Boolean ?: true
         setChip(binding.chipLoop, "每日循环", loopOn)
         setChip(binding.chipNextReset, "下次重置 ${s.runtime["nextReset"] ?: "--"}", false)
-        val runMin = s.runtime["serviceRunningMinutes"]?.toLongOrNull() ?: -1L
-        setChip(binding.chipServiceRun, if (runMin >= 0) "运行 ${runMin}分" else "运行时长", false)
+        val svcMin = s.runtime["serviceRunningMinutes"]?.toLongOrNull() ?: -1L
+        setChip(binding.chipServiceRun, if (svcMin >= 0) "服务运行 ${formatUptime(svcMin)}" else "服务运行", false)
+        val appMin = s.runtime["appRunningMinutes"]?.toLongOrNull() ?: -1L
+        setChip(binding.chipAppRun, if (appMin >= 0) "进程运行 ${formatUptime(appMin)}" else "进程运行", false)
 
         // 任务调度描述 / 设备时间 / 电池温度（快照补齐字段）
         setRow(binding.rowSchedulerDesc, "任务调度", s.runtime["schedulerDesc"] ?: "--")
@@ -524,6 +526,10 @@ class OverviewFragment : Fragment(), SnapshotFragment {
         row.tvRowLabel.text = label
         row.tvRowValue.text = value
     }
+
+    /** 运行时长格式化：>=1 小时显示「X时Y分」，否则「Y分」 */
+    private fun formatUptime(minutes: Long): String =
+        if (minutes >= 60) "${minutes / 60}时${minutes % 60}分" else "${minutes}分"
 
     private fun setChip(tv: android.widget.TextView, label: String, on: Boolean) {
         tv.text = label
