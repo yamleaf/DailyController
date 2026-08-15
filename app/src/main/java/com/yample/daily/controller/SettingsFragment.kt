@@ -208,13 +208,12 @@ class SettingsFragment : Fragment(), SnapshotFragment {
 
     /** 需求 1：远程控制开关关掉后控制端会失联，二次确认，避免误触 */
     private fun handleToggle(item: SettingItem, on: Boolean) {
-        // 更新节假日：触发型字段（快照恒为 false），打开即下发一次并立即复位开关
+        // 更新节假日：触发型字段（快照恒为 false），点击即下发一次并复位；成功提示等被控端 ACK 回执
         if (item.key == "uh") {
             if (!on) return
             onToggle?.invoke(item, true)
             item.value = false
             settingAdapter.notifyDataSetChanged()
-            android.widget.Toast.makeText(requireContext(), "已下发更新节假日指令", android.widget.Toast.LENGTH_SHORT).show()
             return
         }
         if (item.key == "re" && !on) {

@@ -892,6 +892,10 @@ class DeviceControlActivity : AppCompatActivity() {
                         // 避免被控端未发增量 push 时漏刷（不恢复 15s 轮询）。
                         // pendingCommands 由下方统一 remove 取 label。
                         if (packet.rid.isNotBlank() && pendingCommands.containsKey(packet.rid)) {
+                            // 更新节假日：命令下发成功且被控端回 SUCCESS 回执后才提示「已下发成功」
+                            if (pendingCommands[packet.rid]?.field == Protocol.FIELD_UPDATE_HOLIDAY) {
+                                Toast.makeText(this, "节假日更新已下发成功", Toast.LENGTH_SHORT).show()
+                            }
                             forceRefreshSnapshot()
                         }
                     }
@@ -1330,10 +1334,13 @@ val calendar = CalendarSnapshot(
             refreshCurrentFragment()
             return
         }
-        lastCommandLabel = "修改设置"
+        lastCommandLabel = when (field) {
+            Protocol.FIELD_UPDATE_HOLIDAY -> "更新节假日"
+            else -> "修改设置"
+        }
         val ts = System.currentTimeMillis()
         val rid = UUID.randomUUID().toString()
-        rememberCommandLabel(rid, "修改设置", field, value)
+        rememberCommandLabel(rid, lastCommandLabel, field, value)
         val (type, vStr) = when (value) {
             is PacketValue.BooleanValue -> "b" to value.b.toString()
             is PacketValue.IntValue -> "i" to value.i.toString()

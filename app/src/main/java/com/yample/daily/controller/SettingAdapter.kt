@@ -33,7 +33,7 @@ class SettingAdapter(
         "nt" to R.drawable.ic_scan,
         "fd" to R.drawable.ic_power,
         "sh" to R.drawable.ic_timer,
-        "uh" to R.drawable.ic_timer,
+        "uh" to R.drawable.ic_calendar,
         "cw" to R.drawable.ic_timer,
         "ar" to R.drawable.ic_scan,
         "rt" to R.drawable.ic_timer,
@@ -96,20 +96,33 @@ class SettingAdapter(
 
                 when (setting.type) {
                     "bool" -> {
-                        vh.binding.switchSetting.visibility = View.VISIBLE
-                        vh.binding.layoutValue.visibility = View.GONE
-                        val on = setting.value as? Boolean ?: false
-                        vh.binding.switchSetting.setOnCheckedChangeListener(null)
-                        vh.binding.switchSetting.isChecked = on
-                        vh.binding.switchSetting.isEnabled = enabled
-                        vh.binding.tvSettingSub.text = when {
-                            setting.key == "uh" -> "点击触发重新拉取"
-                            on -> "已开启"
-                            else -> "已关闭"
-                        }
-                        vh.binding.switchSetting.setOnCheckedChangeListener { _, isChecked ->
-                            setting.value = isChecked
-                            onToggle(setting, isChecked)
+                        if (setting.key == "uh") {
+                            // 更新节假日：触发型字段，渲染为「刷新」按钮（快照恒为 false，点击即下发一次）
+                            vh.binding.switchSetting.visibility = View.GONE
+                            vh.binding.layoutValue.visibility = View.VISIBLE
+                            vh.binding.tvSettingValue.text = "刷新"
+                            vh.binding.tvSettingSub.text = "点击重新拉取节假日/补班数据"
+                            if (enabled) {
+                                vh.binding.layoutValue.setOnClickListener {
+                                    setting.value = false
+                                    onToggle(setting, true)
+                                }
+                            } else {
+                                vh.binding.layoutValue.setOnClickListener(null)
+                                vh.binding.layoutValue.isClickable = false
+                            }
+                        } else {
+                            vh.binding.switchSetting.visibility = View.VISIBLE
+                            vh.binding.layoutValue.visibility = View.GONE
+                            val on = setting.value as? Boolean ?: false
+                            vh.binding.switchSetting.setOnCheckedChangeListener(null)
+                            vh.binding.switchSetting.isChecked = on
+                            vh.binding.switchSetting.isEnabled = enabled
+                            vh.binding.tvSettingSub.text = if (on) "已开启" else "已关闭"
+                            vh.binding.switchSetting.setOnCheckedChangeListener { _, isChecked ->
+                                setting.value = isChecked
+                                onToggle(setting, isChecked)
+                            }
                         }
                     }
                     "time" -> {
