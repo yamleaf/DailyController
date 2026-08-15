@@ -31,6 +31,8 @@ class SettingAdapter(
         "nt" to R.drawable.ic_scan,
         "fd" to R.drawable.ic_power,
         "sh" to R.drawable.ic_timer,
+        "uh" to R.drawable.ic_timer,
+        "cw" to R.drawable.ic_timer,
         "ar" to R.drawable.ic_scan,
         "rt" to R.drawable.ic_timer,
         "ga" to R.drawable.ic_device,
@@ -98,7 +100,11 @@ class SettingAdapter(
                         vh.binding.switchSetting.setOnCheckedChangeListener(null)
                         vh.binding.switchSetting.isChecked = on
                         vh.binding.switchSetting.isEnabled = enabled
-                        vh.binding.tvSettingSub.text = if (on) "已开启" else "已关闭"
+                        vh.binding.tvSettingSub.text = when {
+                            setting.key == "uh" -> "点击触发重新拉取"
+                            on -> "已开启"
+                            else -> "已关闭"
+                        }
                         vh.binding.switchSetting.setOnCheckedChangeListener { _, isChecked ->
                             setting.value = isChecked
                             onToggle(setting, isChecked)
@@ -138,6 +144,25 @@ class SettingAdapter(
                             }
                         }
                         // 注意：setOnClickListener 会把 clickable 置回 true，禁用时必须清 listener
+                        if (enabled) {
+                            vh.binding.layoutValue.setOnClickListener { onEditValue(setting) }
+                        } else {
+                            vh.binding.layoutValue.setOnClickListener(null)
+                            vh.binding.layoutValue.isClickable = false
+                        }
+                    }
+                    "string" -> {
+                        vh.binding.switchSetting.visibility = View.GONE
+                        vh.binding.layoutValue.visibility = View.VISIBLE
+                        if (setting.key == "cw") {
+                            // 自定义工作日：展示友好文案，点击弹出星期多选
+                            vh.binding.tvSettingValue.text =
+                                SettingsFragment.formatWorkdays(setting.value?.toString().orEmpty())
+                            vh.binding.tvSettingSub.text = "点击设置工作日"
+                        } else {
+                            vh.binding.tvSettingValue.text = setting.value?.toString().orEmpty()
+                            vh.binding.tvSettingSub.text = ""
+                        }
                         if (enabled) {
                             vh.binding.layoutValue.setOnClickListener { onEditValue(setting) }
                         } else {

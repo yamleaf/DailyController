@@ -188,6 +188,88 @@
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
+        <!-- 远程指令（硬编码展示被控端支持的远程能力，仅列出不触发；操作入口在「总览」页） -->
+        <com.google.android.material.card.MaterialCardView
+            style="@style/SectionCard"
+            android:layout_marginTop="10dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingHorizontal="16dp"
+                android:paddingVertical="14dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="远程指令"
+                    android:textColor="@color/md_onSurface"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="以下为被控端支持的远程指令，本页仅展示；对应操作请到「总览」页使用"
+                    android:textColor="@color/md_onSurfaceVariant"
+                    android:textSize="12sp" />
+
+                <View style="@style/Divider" android:layout_marginTop="10dp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="· 远程打卡"
+                    android:textColor="@color/md_onSurface"
+                    android:textSize="14sp" />
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="· 考勤记录"
+                    android:textColor="@color/md_onSurface"
+                    android:textSize="14sp" />
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="· 截屏"
+                    android:textColor="@color/md_onSurface"
+                    android:textSize="14sp" />
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="· 执行任务 / 终止任务"
+                    android:textColor="@color/md_onSurface"
+                    android:textSize="14sp" />
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="· 开启循环 / 关闭循环"
+                    android:textColor="@color/md_onSurface"
+                    android:textSize="14sp" />
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="· 息屏 / 亮屏"
+                    android:textColor="@color/md_onSurface"
+                    android:textSize="14sp" />
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="· 状态查询 / 刷新快照"
+                    android:textColor="@color/md_onSurface"
+                    android:textSize="14sp" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
         <!-- 设备管理（由设置页迁入）：解绑设备 -->
         <com.google.android.material.card.MaterialCardView
             style="@style/SectionCard"

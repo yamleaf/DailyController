@@ -244,6 +244,7 @@ class DeviceControlActivity : AppCompatActivity() {
         settingsFragment = SettingsFragment().apply {
             onToggle = { item, on -> sendUpdate(item.key, PacketValue.BooleanValue(on)) }
             onIntChange = { item, v -> sendUpdate(item.key, PacketValue.IntValue(v)) }
+            onStringChange = { item, s -> sendUpdate(item.key, PacketValue.StringValue(s)) }
             // 需求 1 + 8：消息渠道批量配置含 Webhook Key / 邮箱授权码等机密，
             // 用配对派生的会话密钥做 AES-GCM 信封加密后再下发，Broker 侧只能看到密文
             onMsgConfigSave = { json ->

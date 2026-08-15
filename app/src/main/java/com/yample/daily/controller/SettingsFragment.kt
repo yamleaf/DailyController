@@ -25,6 +25,9 @@ class SettingsFragment : Fragment(), SnapshotFragment {
     var onToggle: ((SettingItem, Boolean) -> Unit)? = null
     var onIntChange: ((SettingItem, Int) -> Unit)? = null
 
+    /** 自定义工作日等字符串字段下发（走 cw 字段） */
+    var onStringChange: ((SettingItem, String) -> Unit)? = null
+
     /** 需求 1：批量下发消息渠道配置（JSON 字符串，走 mcfg 字段） */
     var onMsgConfigSave: ((String) -> Unit)? = null
 
@@ -44,11 +47,21 @@ class SettingsFragment : Fragment(), SnapshotFragment {
             "伪息屏" to listOf("pm", "sm", "tm", "nc", "ga"),
             "通知转移" to listOf("nt"),
             "反馈方式" to listOf("fd"),
-            "任务" to listOf("sh", "rt", "rh", "tr", "ot", "bo"),
+            "任务" to listOf("sh", "rt", "rh", "tr", "ot", "bo", "cw"),
+            "节假日" to listOf("uh"),
             "界面" to listOf("bh", "dp"),
             "低电量告警" to listOf("lb", "ba", "bw", "bs", "br", "bd"),
             "诊断" to listOf("lg")
         )
+
+        /** 序列化工作日串 → 友好文案（如 "1,2,3,4,5" → "周一、周二、周三、周四、周五"） */
+        fun formatWorkdays(raw: String): String {
+            val vals = raw.split(",").mapNotNull { it.trim().toIntOrNull() }.toSet()
+            if (vals.isEmpty()) return "周一~周五"
+            if (vals.size == 7) return "每天"
+            val names = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
+            return vals.sorted().mapNotNull { names.getOrNull(it - 1) }.joinToString("、")
+        }
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
@@ -63,6 +76,7 @@ class SettingsFragment : Fragment(), SnapshotFragment {
             onEditValue = { item ->
                 if (item.type == "time" || item.key == "bw") showTimePicker(item)
                 else if (item.key == "sm") showScreenModeDialog(item)
+                else if (item.key == "cw") showWorkdayDialog(item)
                 else showSliderIfNeeded(item)
             }
         )
@@ -200,6 +214,15 @@ class SettingsFragment : Fragment(), SnapshotFragment {
 
     /** 需求 1：远程控制开关关掉后控制端会失联，二次确认，避免误触 */
     private fun handleToggle(item: SettingItem, on: Boolean) {
+        // 更新节假日：触发型字段（快照恒为 false），打开即下发一次并立即复位开关
+        if (item.key == "uh") {
+            if (!on) return
+            onToggle?.invoke(item, true)
+            item.value = false
+            settingAdapter.notifyDataSetChanged()
+            android.widget.Toast.makeText(requireContext(), "已下发更新节假日指令", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
         if (item.key == "re" && !on) {
             UnifiedDialogKit.showWarning(
                 requireContext(),
@@ -349,6 +372,37 @@ class SettingsFragment : Fragment(), SnapshotFragment {
             }
         }
     }
+
+    /** 自定义工作日：多选星期（周一~周日），序列化为 "1,2,3,4,5" 下发 cw 字段 */
+    private fun showWorkdayDialog(item: SettingItem) {
+        val raw = item.value?.toString().orEmpty()
+        val selected = parseWorkdayValues(raw).toMutableSet()
+        val labels = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
+        val checked = BooleanArray(7) { it + 1 in selected }
+        android.app.AlertDialog.Builder(requireContext())
+            .setTitle("自定义工作日")
+            .setMultiChoiceItems(labels.toTypedArray(), checked) { _, which, isChecked ->
+                if (isChecked) selected.add(which + 1) else selected.remove(which + 1)
+            }
+            .setPositiveButton("保存") { _, _ ->
+                if (selected.isEmpty()) {
+                    android.widget.Toast.makeText(requireContext(), "至少保留一天为工作日", android.widget.Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                val serialized = serializeWorkdayValues(selected)
+                item.value = serialized
+                onStringChange?.invoke(item, serialized)
+                settingAdapter.notifyDataSetChanged()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun parseWorkdayValues(raw: String): Set<Int> =
+        raw.split(",").mapNotNull { it.trim().toIntOrNull() }.toSet()
+
+    private fun serializeWorkdayValues(values: Set<Int>): String =
+        (1..7).filter { it in values }.joinToString(",")
 
     private fun unitFor(key: String): String = when (key) {
         "tm" -> "秒"
