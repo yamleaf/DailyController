@@ -36,10 +36,13 @@ class DeviceFragment : Fragment(), SnapshotFragment {
         val prefs = requireActivity().getSharedPreferences("remote_ctrl", android.content.Context.MODE_PRIVATE)
         val connCollapsed = prefs.getBoolean("collapse_conn", true)
         val devCollapsed = prefs.getBoolean("collapse_deviceinfo", true)
+        val remoteCollapsed = prefs.getBoolean("collapse_remote", true)
         applyCollapse(binding.bodyConn, binding.ivChevronConn, !connCollapsed)
         applyCollapse(binding.bodyDevice, binding.ivChevronDevice, !devCollapsed)
+        applyCollapse(binding.bodyRemote, binding.ivChevronRemote, !remoteCollapsed)
         binding.btnToggleConn.setOnClickListener { toggleSection(binding.bodyConn, binding.ivChevronConn, "collapse_conn") }
         binding.btnToggleDevice.setOnClickListener { toggleSection(binding.bodyDevice, binding.ivChevronDevice, "collapse_deviceinfo") }
+        binding.btnToggleRemote.setOnClickListener { toggleSection(binding.bodyRemote, binding.ivChevronRemote, "collapse_remote") }
         binding.btnUnbindDevice.setOnClickListener { onUnbind?.invoke() }
         snapshot?.let { render(it) }
     }

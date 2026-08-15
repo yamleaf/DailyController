@@ -54,14 +54,8 @@ class SettingsFragment : Fragment(), SnapshotFragment {
             "诊断" to listOf("lg")
         )
 
-        /** 序列化工作日串 → 友好文案（如 "1,2,3,4,5" → "周一、周二、周三、周四、周五"） */
-        fun formatWorkdays(raw: String): String {
-            val vals = raw.split(",").mapNotNull { it.trim().toIntOrNull() }.toSet()
-            if (vals.isEmpty()) return "周一~周五"
-            if (vals.size == 7) return "每天"
-            val names = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
-            return vals.sorted().mapNotNull { names.getOrNull(it - 1) }.joinToString("、")
-        }
+        /** 星期多选弹窗用的标签（1=周一 ... 7=周日） */
+        val WEEKDAY_LABELS = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
@@ -377,7 +371,7 @@ class SettingsFragment : Fragment(), SnapshotFragment {
     private fun showWorkdayDialog(item: SettingItem) {
         val raw = item.value?.toString().orEmpty()
         val selected = parseWorkdayValues(raw).toMutableSet()
-        val labels = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
+        val labels = WEEKDAY_LABELS
         val checked = BooleanArray(7) { it + 1 in selected }
         android.app.AlertDialog.Builder(requireContext())
             .setTitle("自定义工作日")

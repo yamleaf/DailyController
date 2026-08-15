@@ -4,6 +4,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
+import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
 import com.yample.daily.controller.databinding.ItemSettingRowBinding
 
@@ -155,12 +156,18 @@ class SettingAdapter(
                         vh.binding.switchSetting.visibility = View.GONE
                         vh.binding.layoutValue.visibility = View.VISIBLE
                         if (setting.key == "cw") {
-                            // 自定义工作日：展示友好文案，点击弹出星期多选
-                            vh.binding.tvSettingValue.text =
-                                SettingsFragment.formatWorkdays(setting.value?.toString().orEmpty())
+                            // 自定义工作日：用 7 个圆点直观展示（实心=工作日，空心=非工作日），点击弹出星期多选
+                            vh.binding.tvSettingValue.visibility = View.GONE
+                            vh.binding.layoutWorkdayDots.visibility = View.VISIBLE
+                            renderWorkdayDots(
+                                vh.binding.layoutWorkdayDots,
+                                setting.value?.toString().orEmpty()
+                            )
                             vh.binding.tvSettingSub.text = "点击设置工作日"
                         } else {
+                            vh.binding.tvSettingValue.visibility = View.VISIBLE
                             vh.binding.tvSettingValue.text = setting.value?.toString().orEmpty()
+                            vh.binding.layoutWorkdayDots.visibility = View.GONE
                             vh.binding.tvSettingSub.text = ""
                         }
                         if (enabled) {
@@ -179,6 +186,33 @@ class SettingAdapter(
         1 -> "息屏"
         2 -> "常亮"
         else -> "伪息屏"
+    }
+
+    /** 周一~周日 顺序，与圆点位置一一对应（1=周一 ... 7=周日） */
+    private val WEEKDAY_LABELS = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
+
+    /** 把工作日串渲染成一行 7 个圆点：实心=工作日，空心=非工作日 */
+    private fun renderWorkdayDots(container: ViewGroup, raw: String) {
+        val selected = raw.split(",").mapNotNull { it.trim().toIntOrNull() }.toSet()
+        container.removeAllViews()
+        val ctx = container.context
+        val density = ctx.resources.displayMetrics.density
+        val dotSize = (14 * density).toInt() // 直径 14dp
+        val gap = (8 * density).toInt()      // 间距 8dp
+        for (i in 0..6) {
+            val dot = View(ctx)
+            val lp = LinearLayout.LayoutParams(dotSize, dotSize)
+            if (i > 0) lp.marginStart = gap
+            dot.layoutParams = lp
+            val isWorkday = (i + 1) in selected
+            dot.background = ContextCompat.getDrawable(
+                ctx,
+                if (isWorkday) R.drawable.dot_filled else R.drawable.dot_hollow
+            )
+            dot.contentDescription =
+                WEEKDAY_LABELS[i] + if (isWorkday) "（工作日）" else "（非工作日）"
+            container.addView(dot)
+        }
     }
 
     private fun unitFor(key: String): String = when (key) {
