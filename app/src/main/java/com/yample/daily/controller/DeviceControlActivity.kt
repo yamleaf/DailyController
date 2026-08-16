@@ -401,22 +401,27 @@ class DeviceControlActivity : AppCompatActivity() {
                     // 初始连接不在此发配对：connect() 之后的初始流程负责，避免重复发起。
                 } else {
                     // 每次连接/重连都重新订阅全部主题；订阅是幂等的。
-                    lifecycleScope.launch(Dispatchers.IO) { subscribeTopics() }
-                    // 复位首次探活标志：Paho 自动重连（isAutomaticReconnect）不经过 disconnectMqtt
-                    // （只有那里会复位 firstEntryProbeStarted）。若不复位，重连后 startFirstEntryProbe
-                    // 会因 firstEntryProbeStarted=true 直接 return —— 只把色灯置成「探活中…」(琥珀)
-                    // 却永远不再发探活，色灯卡在黄色直到手动刷新/收到推送（本工作区已移除 15s 周期刷新，
-                    // 没有自动兜底）。复位后每次（重）连都重新探活：被控端在线 → 快照确认转绿；
-                    // 离线 → 两次失败转红，不再卡死。首次连接时 connectComplete 与下方初始分支都会触发，
-                    // 由 sendQuery 的 queryPendingRid 并发守护去重。
-                    firstEntryProbeStarted = false
-                    // 首次进入详情页：仅此时主动拉一次快照（5s 探活 + 重试 → 离线判定）。
-                    // 不再周期刷新，其余刷新只来自手动刷新 / 被控端推送。
-                    // 注意：此处不再无条件 setConnStatus("探活中…") —— 琥珀态统一由
-                    // startFirstEntryProbe 在真正发出探活时设置。否则 connectComplete 与
-                    // connect() 返回分支都会置「探活中…」，后到者会把已经确认成功的绿灯覆盖成黄、
-                    // 而它的 startFirstEntryProbe 又因标志位直接 return，结果就是「灰→黄→绿→黄(卡死)」。
-                    startFirstEntryProbe()
+                    // 关键顺序：先订阅（subscribeTopics 同步等 SUBACK 返回）→ 完成后再首次探活。
+                    // 若并行发 QUERY，被控端 resp 到达时订阅未建立会被 broker 丢弃，
+                    // 首次探活 2s×2 超时 → 误判离线（表现为「先进设备页报离线、随后又报恢复响应」）。
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        subscribeTopics()
+                        // 复位首次探活标志：Paho 自动重连（isAutomaticReconnect）不经过 disconnectMqtt
+                        // （只有那里会复位 firstEntryProbeStarted）。若不复位，重连后 startFirstEntryProbe
+                        // 会因 firstEntryProbeStarted=true 直接 return —— 只把色灯置成「探活中…」(琥珀)
+                        // 却永远不再发探活，色灯卡在黄色直到手动刷新/收到推送（本工作区已移除 15s 周期刷新，
+                        // 没有自动兜底）。复位后每次（重）连都重新探活：被控端在线 → 快照确认转绿；
+                        // 离线 → 两次失败转红，不再卡死。首次连接时 connectComplete 与下方初始分支都会触发，
+                        // 由 sendQuery 的 queryPendingRid 并发守护去重。
+                        firstEntryProbeStarted = false
+                        // 首次进入详情页：仅此时主动拉一次快照（5s 探活 + 重试 → 离线判定）。
+                        // 不再周期刷新，其余刷新只来自手动刷新 / 被控端推送。
+                        // 注意：此处不再无条件 setConnStatus("探活中…") —— 琥珀态统一由
+                        // startFirstEntryProbe 在真正发出探活时设置。否则 connectComplete 与
+                        // connect() 返回分支都会置「探活中…」，后到者会把已经确认成功的绿灯覆盖成黄、
+                        // 而它的 startFirstEntryProbe 又因标志位直接 return，结果就是「灰→黄→绿→黄(卡死)」。
+                        startFirstEntryProbe()
+                    }
                 }
             }
 
