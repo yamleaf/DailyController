@@ -892,11 +892,21 @@ class DeviceControlActivity : AppCompatActivity() {
                         // 避免被控端未发增量 push 时漏刷（不恢复 15s 轮询）。
                         // pendingCommands 由下方统一 remove 取 label。
                         if (packet.rid.isNotBlank() && pendingCommands.containsKey(packet.rid)) {
+                            val cmd = pendingCommands[packet.rid]
                             // 更新节假日：命令下发成功且被控端回 SUCCESS 回执后才提示「已下发成功」
-                            if (pendingCommands[packet.rid]?.field == Protocol.FIELD_UPDATE_HOLIDAY) {
+                            if (cmd?.field == Protocol.FIELD_UPDATE_HOLIDAY) {
                                 Toast.makeText(this, "节假日更新已下发成功", Toast.LENGTH_SHORT).show()
                             }
-                            forceRefreshSnapshot()
+                            // 关闭远程控制：被控端 ack 后约 1.5s 停 MQTT 服务，此刻拉快照
+                            // 的 QUERY 必然到不了被控端 → 误报「被控端未返回快照」。跳过刷新，
+                            // 改提示「已关闭」即可（连接断开后总览自然显示离线）。
+                            if (cmd?.field == Protocol.FIELD_REMOTE_ENABLED &&
+                                (cmd.value as? PacketValue.BooleanValue)?.b == false
+                            ) {
+                                Toast.makeText(this, "远程控制已关闭", Toast.LENGTH_SHORT).show()
+                            } else {
+                                forceRefreshSnapshot()
+                            }
                         }
                     }
                     "TASK_OK" -> Toast.makeText(this, "任务已更新", Toast.LENGTH_SHORT).show()
