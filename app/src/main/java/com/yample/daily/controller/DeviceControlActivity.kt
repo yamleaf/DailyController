@@ -897,6 +897,20 @@ class DeviceControlActivity : AppCompatActivity() {
                             if (cmd?.field == Protocol.FIELD_UPDATE_HOLIDAY) {
                                 Toast.makeText(this, "节假日更新已下发成功", Toast.LENGTH_SHORT).show()
                             }
+                            // 乐观更新本地缓存：下发字段直接写入 settings 区块对应项并刷新 UI，
+                            // 立即反映下发结果（不等 QUERY 往返）；被控端增量推送/拉全量随后校准
+                            val snapshot = currentSnapshot
+                            if (snapshot != null && cmd?.field != null && cmd.field.isNotBlank()) {
+                                val newVal: Any? = when (val v = cmd.value) {
+                                    is PacketValue.BooleanValue -> v.b
+                                    is PacketValue.IntValue -> v.i
+                                    is PacketValue.StringValue -> v.s
+                                }
+                                if (newVal != null) {
+                                    snapshot.settings.firstOrNull { it.key == cmd.field }?.value = newVal
+                                    overviewFragment.refresh(snapshot)
+                                }
+                            }
                             // 关闭远程控制：被控端 ack 后约 1.5s 停 MQTT 服务，此刻拉快照
                             // 的 QUERY 必然到不了被控端 → 误报「被控端未返回快照」。跳过刷新，
                             // 改提示「已关闭」即可（连接断开后总览自然显示离线）。
