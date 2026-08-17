@@ -547,6 +547,14 @@ class MainActivity : AppCompatActivity() {
                     }
                     is ProbeResult.Online -> result = parsed.value
                 }
+                // 拿到 retained 状态后立即回填在线药丸（不等 QUERY 会话校验），避免列表长期停在「未知等待」
+                if (!unbound) {
+                    val early = result
+                    withContext(Dispatchers.Main) {
+                        onlineState[device.deviceId] = early
+                        adapter.setOnline(device.deviceId, early)
+                    }
+                }
                 // 会话有效性验证：仅当设备在线且已绑定，且本次进入尚未验证过才主动 QUERY。
                 // 换绑后 retained 被明文 "online" 覆盖，探活读不到信封，只能靠签名 QUERY 的 SIGN_FAIL 识别。
                 if (!unbound && result == true && device.sessionSecret.isNotBlank() && device.bound &&
