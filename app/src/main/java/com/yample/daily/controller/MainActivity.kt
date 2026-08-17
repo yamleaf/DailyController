@@ -13,6 +13,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.room.Room
 import com.google.gson.Gson
+import com.google.gson.GsonBuilder
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import com.yample.daily.controller.databinding.ActivityMainBinding
@@ -22,6 +23,7 @@ import com.yample.mqttprotocol.Hkdf
 import com.yample.mqttprotocol.MqttPacket
 import com.yample.mqttprotocol.MqttSigner
 import com.yample.mqttprotocol.PacketValue
+import com.yample.mqttprotocol.PacketValueAdapter
 import com.yample.mqttprotocol.Protocol
 import com.yample.mqttprotocol.dialog.UnifiedDialogKit
 import kotlinx.coroutines.Dispatchers
@@ -49,6 +51,11 @@ class MainActivity : AppCompatActivity() {
     private var currentAdapter: DeviceAdapter? = null
     /** Gson 实例，用于把解绑包序列化为 MQTT 载荷 */
     private val gson = Gson()
+
+    /** 探活解析用 Gson：需注册 PacketValue 适配器才能反序列化 MQTT 状态信封（CMD_STATUS） */
+    private val probeGson = GsonBuilder()
+        .registerTypeAdapter(PacketValue::class.java, PacketValueAdapter)
+        .create()
 
     /** 分组选择器里「新建分组」的哨兵值（不会与真实分组名冲突） */
     private val newGroupSentinel = "\u0000new_group\u0000"
@@ -229,6 +236,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /** 离开列表页（切到其他页面 / 退到后台）：清空本次停留的会话验证标记，下次进入重新发 QUERY 校验 */
+    override fun onStop() {
+        sessionCheckedThisVisit.clear()
+        super.onStop()
+    }
+
     override fun onDestroy() {
         mainHandler.removeCallbacks(timeUpdateRunnable)
         super.onDestroy()
@@ -236,6 +249,9 @@ class MainActivity : AppCompatActivity() {
 
     /** 在线状态探测复用 TTL：30s 内不重复探测（缓存见 OnlineStateCache，与离线监测服务共享） */
     private val PROBE_TTL_MS = 30_000L
+
+    /** 会话有效性验证（主动 QUERY）：每次进入列表页对在线设备发一次；本次停留（未切页/未退后台）内不重复发送 */
+    private val sessionCheckedThisVisit = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
     /** 当前在线状态（deviceId → Boolean?），统计与搜索重建 adapter 后仍保留 */
     private val onlineState = mutableMapOf<String, Boolean?>()
@@ -270,6 +286,12 @@ class MainActivity : AppCompatActivity() {
                         } else {
                             onlineState[device.deviceId] = cached.first
                             currentAdapter?.setOnline(device.deviceId, cached.first)
+                            // 缓存在线但本次进入尚未验证会话：仍补发一次签名 QUERY 校验绑定状态
+                            if (cached.first == true && device.sessionSecret.isNotBlank() && device.bound &&
+                                sessionCheckedThisVisit.add(device.deviceId)
+                            ) {
+                                sessionQueryOnly(device)
+                            }
                         }
                     }
                 updateStats()
@@ -471,12 +493,16 @@ class MainActivity : AppCompatActivity() {
 
     /**
      * A1：临时连一次 MQTT，订阅 dt/{id}/status（retained）读取在线/离线状态回填列表卡片。
-     * 收到 "online"→true / "offline"→false / 其它或超时→null（未知）。完成后断开并关闭连接。
-     * 个人场景设备数少（≤5），N 次短连接可接受；超时控制在 3s 内不卡 UI。
+     * 收到 "online"→true / "offline"→false / 其它或超时→null（未知）。
+     * 若设备处于「在线·已绑定」，且本次进入尚未验证过会话，再主动发一条带本端会话签名的 QUERY：
+     * 被控端若已与其他手机重新配对（换绑），会因会话不匹配回 SIGN_FAIL，据此判定解绑
+     * （解决「被控端已解绑换绑、列表仍显示在线·绑定」：探活只读 retained 拿不到被覆盖的信封）。
+     * 完成后断开并关闭连接。个人场景设备数少（≤5），N 次短连接可接受；单次等待 ≤3s 不卡 UI。
      */
     private fun probeOnline(device: DeviceRecord, adapter: DeviceAdapter) {
         lifecycleScope.launch(Dispatchers.IO) {
             var result: Boolean? = null
+            var unbound = false
             try {
                 val client = MqttClient(
                     BrokerUtils.normalizeBroker(device.broker),
@@ -489,10 +515,19 @@ class MainActivity : AppCompatActivity() {
                     isCleanSession = true
                     connectionTimeout = 5
                 }
-                val latch = java.util.concurrent.CompletableFuture<String>()
+                val statusLatch = java.util.concurrent.CompletableFuture<String>()
+                val ackLatch = java.util.concurrent.CompletableFuture<String>()
+                var pendingRid: String? = null
                 client.setCallback(object : MqttCallback {
                     override fun messageArrived(topic: String?, message: MqttMessage?) {
-                        message?.payload?.let { latch.complete(String(it).trim()) }
+                        val payload = message?.payload?.let { String(it).trim() } ?: return
+                        when (topic?.substringAfterLast('/')) {
+                            "status" -> statusLatch.complete(payload)
+                            // 只响应会话校验发出的 rid 对应的回执，避免迟到的无关 ack 抢先完成 latch
+                            "ack" -> if (pendingRid != null && parseRid(payload) == pendingRid) {
+                                ackLatch.complete(payload)
+                            }
+                        }
                     }
                     override fun connectionLost(cause: Throwable?) {}
                     override fun deliveryComplete(token: IMqttDeliveryToken?) {}
@@ -500,19 +535,62 @@ class MainActivity : AppCompatActivity() {
                 client.connect(opts)
                 client.subscribe("${MqttPacket.TOPIC_PREFIX}/${device.deviceId}/status", 1)
                 val got = try {
-                    latch.get(3, TimeUnit.SECONDS)
+                    statusLatch.get(3, TimeUnit.SECONDS)
                 } catch (_: Exception) {
                     null
                 }
-                result = when (got) {
-                    "online" -> true
-                    "offline" -> false
-                    else -> null
+                when (val parsed = parseProbeStatus(got, device)) {
+                    ProbeResult.Unbound -> {
+                        // 收到被控端签名解绑状态（force_unbound/unbound）：本地绑定已失效
+                        unbound = true
+                        result = null
+                    }
+                    is ProbeResult.Online -> result = parsed.value
+                }
+                // 会话有效性验证：仅当设备在线且已绑定，且本次进入尚未验证过才主动 QUERY。
+                // 换绑后 retained 被明文 "online" 覆盖，探活读不到信封，只能靠签名 QUERY 的 SIGN_FAIL 识别。
+                if (!unbound && result == true && device.sessionSecret.isNotBlank() && device.bound &&
+                    sessionCheckedThisVisit.add(device.deviceId)
+                ) {
+                    val ts = System.currentTimeMillis()
+                    val rid = UUID.randomUUID().toString()
+                    pendingRid = rid
+                    val sign = MqttSigner.sign(
+                        device.sessionSecret, device.deviceId, ts, rid,
+                        "snapshot", "", "", MqttPacket.CMD_QUERY
+                    )
+                    val packet = MqttPacket(
+                        c = MqttPacket.CMD_QUERY, f = "snapshot", v = null,
+                        rid = rid, ts = ts, sign = sign
+                    )
+                    client.subscribe("${MqttPacket.TOPIC_PREFIX}/${device.deviceId}/ack", 1)
+                    try {
+                        client.publish(
+                            "${MqttPacket.TOPIC_PREFIX}/${device.deviceId}/cmd",
+                            MqttMessage(gson.toJson(packet).toByteArray()).apply { qos = 1 }
+                        )
+                    } catch (_: Exception) {
+                    }
+                    val ack = try {
+                        ackLatch.get(3, TimeUnit.SECONDS)
+                    } catch (_: Exception) {
+                        null
+                    }
+                    val code = ack?.let(::parseAckCode)
+                    if (code == "SIGN_FAIL" || code == "UNBOUND") {
+                        // 设备回 SIGN_FAIL/UNBOUND：本端会话已失效（被控端已解绑或与其他手机换绑）
+                        unbound = true
+                        result = null
+                    }
                 }
                 client.disconnect()
                 client.close()
             } catch (_: Exception) {
                 result = null
+            }
+            if (unbound) {
+                applyUnbound(device)
+                return@launch
             }
             val final = result
             val prev = OnlineStateCache.get(device.deviceId)?.first
@@ -531,6 +609,142 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    /** 探活状态解析结果：Online 携带在线态（true/false/null），Unbound=检测到签名解绑状态 */
+    private sealed class ProbeResult {
+        data class Online(val value: Boolean?) : ProbeResult()
+        object Unbound : ProbeResult()
+    }
+
+    /**
+     * 仅做会话有效性校验的短连接：缓存显示在线、但本次进入尚未验证会话时调用。
+     * 发一条带本端会话签名的 QUERY，被控端若已换绑/解绑会回 SIGN_FAIL/UNBOUND，据此清本地绑定。
+     */
+    private fun sessionQueryOnly(device: DeviceRecord) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            var unbound = false
+            try {
+                val client = MqttClient(
+                    BrokerUtils.normalizeBroker(device.broker),
+                    "ctl-sess-${device.deviceId}",
+                    MemoryPersistence()
+                )
+                val opts = MqttConnectOptions().apply {
+                    userName = device.ctlUser
+                    password = device.ctlPass.toCharArray()
+                    isCleanSession = true
+                    connectionTimeout = 5
+                }
+                val ackLatch = java.util.concurrent.CompletableFuture<String>()
+                var pendingRid: String? = null
+                client.setCallback(object : MqttCallback {
+                    override fun messageArrived(topic: String?, message: MqttMessage?) {
+                        val payload = message?.payload?.let { String(it).trim() } ?: return
+                        if (topic?.endsWith("/ack") == true && pendingRid != null && parseRid(payload) == pendingRid) {
+                            ackLatch.complete(payload)
+                        }
+                    }
+                    override fun connectionLost(cause: Throwable?) {}
+                    override fun deliveryComplete(token: IMqttDeliveryToken?) {}
+                })
+                client.connect(opts)
+                val ts = System.currentTimeMillis()
+                val rid = UUID.randomUUID().toString()
+                pendingRid = rid
+                val sign = MqttSigner.sign(
+                    device.sessionSecret, device.deviceId, ts, rid,
+                    "snapshot", "", "", MqttPacket.CMD_QUERY
+                )
+                val packet = MqttPacket(
+                    c = MqttPacket.CMD_QUERY, f = "snapshot", v = null,
+                    rid = rid, ts = ts, sign = sign
+                )
+                client.subscribe("${MqttPacket.TOPIC_PREFIX}/${device.deviceId}/ack", 1)
+                try {
+                    client.publish(
+                        "${MqttPacket.TOPIC_PREFIX}/${device.deviceId}/cmd",
+                        MqttMessage(gson.toJson(packet).toByteArray()).apply { qos = 1 }
+                    )
+                } catch (_: Exception) {
+                }
+                val ack = try {
+                    ackLatch.get(3, TimeUnit.SECONDS)
+                } catch (_: Exception) {
+                    null
+                }
+                val code = ack?.let(::parseAckCode)
+                if (code == "SIGN_FAIL" || code == "UNBOUND") unbound = true
+                client.disconnect()
+                client.close()
+            } catch (_: Exception) {
+            }
+            if (unbound) applyUnbound(device)
+        }
+    }
+
+    /** 设备已解绑/换绑：清除本地绑定态并刷新列表，让列表正确显示「解绑」而非残留「在线·绑定」 */
+    private suspend fun applyUnbound(device: DeviceRecord) {
+        val updated = device.copy(sessionSecret = "", pairingToken = "", bound = false)
+        db.deviceDao().update(updated)
+        OnlineStateCache.remove(device.deviceId)
+        withContext(Dispatchers.Main) {
+            onlineState.remove(device.deviceId)
+            loadDevices()
+            Toast.makeText(
+                this@MainActivity,
+                "设备「${device.name}」已被解绑，请重新扫码配对",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    /** 从 ack 载荷提取 rid，用于过滤可能迟到的无关回执（非 JSON 返回 null） */
+    private fun parseRid(payload: String): String? = try {
+        probeGson.fromJson(payload, MqttPacket::class.java)?.rid
+    } catch (_: Exception) {
+        null
+    }
+
+    /** 提取 ack 载荷的结果码（v 字符串），非 JSON/无值返回 null */
+    private fun parseAckCode(payload: String): String? = try {
+        probeGson.fromJson(payload, MqttPacket::class.java)?.v?.toStringValue()
+    } catch (_: Exception) {
+        null
+    }
+
+    /**
+     * 解析 status 主题载荷：
+     * - "online"/"offline" 明文 → 在线/离线
+     * - 签名 JSON 信封（CMD_STATUS）且 state 为 unbound/force_unbound → 验签通过则返回 Unbound
+     *   （被控端解绑时用旧会话签名后清密钥，本端 sessionSecret 仍在，可验签；防公共 Broker 伪造 plain）
+     * - 其余 → 未知
+     */
+    private fun parseProbeStatus(raw: String?, device: DeviceRecord): ProbeResult {
+        when (raw) {
+            "online" -> return ProbeResult.Online(true)
+            "offline" -> return ProbeResult.Online(false)
+        }
+        if (raw != null && raw.startsWith("{")) {
+            try {
+                val packet = probeGson.fromJson(raw, MqttPacket::class.java) ?: return ProbeResult.Online(null)
+                if (packet.c != Protocol.CMD_STATUS && packet.c != MqttPacket.CMD_STATUS) {
+                    return ProbeResult.Online(null)
+                }
+                val state = packet.v?.toStringValue() ?: return ProbeResult.Online(null)
+                if (state == "unbound" || state == "force_unbound") {
+                    if (device.sessionSecret.isNotBlank()) {
+                        val expected = MqttSigner.sign(
+                            device.sessionSecret, device.deviceId, packet.ts, packet.rid,
+                            "", "s", state, Protocol.CMD_STATUS
+                        )
+                        if (expected == packet.sign) return ProbeResult.Unbound
+                    }
+                }
+            } catch (_: Exception) {
+            }
+        }
+        return ProbeResult.Online(null)
     }
 
     private fun addDevice(payload: BindingPayload, navigate: Boolean = false) {

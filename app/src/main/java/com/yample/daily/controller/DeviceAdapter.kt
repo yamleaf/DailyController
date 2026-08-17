@@ -78,19 +78,32 @@ class DeviceAdapter(
         binding.tvDeviceId.text = "ID: ${device.deviceId}"
         // 置顶角标：图标框右上角小图钉
         binding.imgPinBadge.visibility = if (device.pinned) View.VISIBLE else View.GONE
-        val paired = device.sessionSecret.isNotBlank() && device.bound
-        // 状态药丸：绿=在线已配对 / 琥珀=未配对(待配对) / 红=离线 / 灰=未知
+        val bound = device.sessionSecret.isNotBlank() && device.bound
+        val pairing = device.pairingToken.isNotBlank() && !bound
         val online = onlineStates[device.deviceId]
+        // 状态药丸：配对状态 × 在线状态 分开展示，避免设备解绑后仍显示绿色「在线」
+        // 绿=在线·绑定 / 橙=在线·解绑(可达但未绑定，需重新配对) / 灰=离线·解绑 / 琥珀=等待(探活中或配对中)
         val (pillText, pillBg) = when {
-            !paired -> "待配对" to R.drawable.bg_status_pill_pairing
-            online == true -> "在线" to R.drawable.bg_status_pill_online
-            online == false -> "离线" to R.drawable.bg_status_pill_offline
-            else -> "未知" to R.drawable.bg_status_pill_offline
+            pairing -> "等待配对" to R.drawable.bg_status_pill_pairing
+            !bound -> when (online) {
+                true -> "在线·解绑" to R.drawable.bg_status_pill_warning
+                false -> "离线·解绑" to R.drawable.bg_status_pill_offline
+                else -> "解绑" to R.drawable.bg_status_pill_offline
+            }
+            else -> when (online) {
+                true -> "在线·绑定" to R.drawable.bg_status_pill_online
+                false -> "离线·绑定" to R.drawable.bg_status_pill_offline
+                else -> "未知等待" to R.drawable.bg_status_pill_pairing
+            }
         }
         binding.tvStatusPill.text = pillText
         binding.tvStatusPill.setBackgroundResource(pillBg)
         // 副信息行：配对提示（后续可替换为「最后在线时间」）
-        binding.tvLastSeen.text = if (paired) "已配对 · 点按进入控制" else "未配对 · 请先扫码绑定"
+        binding.tvLastSeen.text = when {
+            pairing -> "等待配对 · 请保持被控端在线"
+            bound -> "已绑定 · 点按进入控制"
+            else -> "已解绑 · 请重新扫码绑定"
+        }
         // 整卡点击进入设备控制（左滑展开时点击卡片先收起再放行）
         binding.card.setOnClickListener {
             if (binding.swipeRevealLayout.isOpen) {

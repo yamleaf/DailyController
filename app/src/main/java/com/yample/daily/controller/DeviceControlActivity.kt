@@ -861,6 +861,18 @@ class DeviceControlActivity : AppCompatActivity() {
                     "", "", resultWire, Protocol.CMD_ACK
                 )
                 if (packet.sign != expected) {
+                    // 空签名 + UNBOUND 回执 = 被控端会话已清空（被解绑），且回应的是本端正在等待的指令
+                    // （rid 匹配查询/配对/下发），才可信地判解绑；否则仍按验签失败忽略，防公共 Broker 伪造。
+                    // 被控端未绑定时 doPublishAck 用空会话签名，控制端若仅凭验签失败忽略，会漏掉真实解绑态。
+                    if (packet.sign.isBlank() && resultWire.startsWith("UNBOUND") &&
+                        packet.rid.isNotBlank() &&
+                        (packet.rid == queryPendingRid || packet.rid == pendingPairRid ||
+                            pendingCommands.containsKey(packet.rid))
+                    ) {
+                        Log.w(TAG, "收到空签名 UNBOUND 回执（被控端已解绑）rid=${packet.rid} -> 触发本地解绑")
+                        runOnUiThread { handleRemoteUnbound(force = false) }
+                        return
+                    }
                     Log.w(TAG, "ACK 验签失败 rid=${packet.rid}")
                     runOnUiThread { toastOnce("ack_sign_fail", "回执验签失败，已忽略") }
                     return
