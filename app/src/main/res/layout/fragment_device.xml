@@ -173,6 +173,10 @@
                     <View style="@style/Divider" />
                     <include layout="@layout/row_info" android:id="@+id/rowScreenState" />
                     <View style="@style/Divider" />
+                    <include layout="@layout/row_info" android:id="@+id/rowKeepaliveLevel" />
+                    <View style="@style/Divider" />
+                    <include layout="@layout/row_info" android:id="@+id/rowKeepaliveChanged" />
+                    <View style="@style/Divider" />
                     <include layout="@layout/row_info" android:id="@+id/rowProtoVer" />
                     <View style="@style/Divider" />
                     <include layout="@layout/row_info" android:id="@+id/rowBrand" />

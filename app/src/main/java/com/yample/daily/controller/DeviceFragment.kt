@@ -9,6 +9,7 @@ import androidx.fragment.app.Fragment
 import com.yample.daily.controller.databinding.FragmentDeviceBinding
 import com.yample.daily.controller.databinding.RowInfoBinding
 import com.yample.mqttprotocol.MqttQuota
+import com.yample.mqttprotocol.Protocol
 
 /**
  * 设备页：设备相关的连接信息 + 硬件信息（由原「权限」页更名为「设备」，
@@ -101,6 +102,19 @@ class DeviceFragment : Fragment(), SnapshotFragment {
 
         setRow(binding.rowModel, "型号", s.device["model"] ?: "--")
         setRow(binding.rowScreenState, "手机状态", s.runtime["screenState"] ?: "--")
+        // 息屏保活三级自适应：仅「伪息屏关闭 + 屏幕模式=息屏」时展示（此时才走 MQTT 保活策略）
+        val pseudoOn = s.settings.firstOrNull { it.key == Protocol.FIELD_FORCE_PSEUDO_MASK }?.value as? Boolean ?: false
+        val screenOff = (s.settings.firstOrNull { it.key == Protocol.FIELD_SCREEN_MODE }?.value as? Int) == 1
+        val showKeepalive = !pseudoOn && screenOff
+        val kv = if (showKeepalive) View.VISIBLE else View.GONE
+        binding.rowKeepaliveLevel.root.visibility = kv
+        binding.rowKeepaliveChanged.root.visibility = kv
+        if (showKeepalive) {
+            setRow(binding.rowKeepaliveLevel, "保活级别", s.runtime["keepaliveLevel"] ?: "--")
+            val desc = s.runtime["keepaliveLevelChangedDesc"] ?: "--"
+            val at = s.runtime["keepaliveLevelChangedAt"] ?: "--"
+            setRow(binding.rowKeepaliveChanged, "最近切换", if (desc != "—") "$desc · $at" else at)
+        }
         setRow(binding.rowProtoVer, "协议版本", s.device["protoVer"] ?: "—")
         setRow(binding.rowBrand, "品牌/厂商", "${s.device["brand"] ?: "--"} ${s.device["manufacturer"] ?: ""}".trim())
         setRow(binding.rowAndroid, "系统版本", "Android ${s.device["androidVersion"] ?: "?"} (API ${s.device["sdk"] ?: "?"})")
