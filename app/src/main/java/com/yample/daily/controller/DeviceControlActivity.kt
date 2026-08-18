@@ -1547,11 +1547,14 @@ val calendar = CalendarSnapshot(
         if (recentlyMarkedOffline) return
         recentlyMarkedOffline = true
         runOnUiThread {
-            setConnStatus("设备离线（无响应）", false, "被控端未响应，可能已经离线/解绑。")
+            setConnStatus(
+                "设备离线（无响应）", false,
+                "被控端未响应，可能已经离线/解绑。\n可尝试给被控端发送通知指令（如「DT#状态查询」）触发响应"
+            )
             overviewFragment.setActionsEnabled(false)
             Snackbar.make(
                 binding.root,
-                "被控端无响应（疑似离线）：可尝试给被控端发送通知指令（如「DT#状态查询」）触发响应，或确认设备状态后重新连接",
+                "被控端无响应（疑似离线），请确认设备状态后重新连接",
                 Snackbar.LENGTH_LONG
             ).setAction("重新连接") {
                 overviewFragment.setRefreshing(false)
