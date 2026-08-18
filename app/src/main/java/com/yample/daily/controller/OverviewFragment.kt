@@ -485,8 +485,6 @@ class OverviewFragment : Fragment(), SnapshotFragment {
         setChip(binding.chipNextReset, "下次重置 ${s.runtime["nextReset"] ?: "--"}", false)
         val svcMin = s.runtime["serviceRunningMinutes"]?.toLongOrNull() ?: -1L
         setChip(binding.chipServiceRun, if (svcMin >= 0) "服务运行 ${formatUptime(svcMin)}" else "服务运行", false)
-        val appMin = s.runtime["appRunningMinutes"]?.toLongOrNull() ?: -1L
-        setChip(binding.chipAppRun, if (appMin >= 0) "进程运行 ${formatUptime(appMin)}" else "进程运行", false)
 
         // 任务调度描述 / 设备时间 / 电池温度（快照补齐字段）
         setRow(binding.rowSchedulerDesc, "任务调度", s.runtime["schedulerDesc"] ?: "--")
@@ -501,6 +499,11 @@ class OverviewFragment : Fragment(), SnapshotFragment {
         }
         setRow(binding.rowDeviceTime, "设备时间", s.runtime["currentTime"] ?: "--")
         setRow(binding.rowTemperature, "电池温度", s.runtime["temperature"] ?: "--")
+        // 掉线统计（被控端 runtime 上报：所有保活模式统一计数，跨天重置）
+        val discCount = s.runtime["mqttDisconnectCount"]?.toIntOrNull() ?: 0
+        val discAt = s.runtime["mqttLastDisconnectAt"] ?: "—"
+        val discText = if (discCount <= 0) "今日 0 次" else "今日 $discCount 次 · 最近 $discAt"
+        setRow(binding.rowDisconnect, "掉线统计", discText)
 
         // 设备信息（已迁移至「设置」页）
 

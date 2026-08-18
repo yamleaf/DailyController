@@ -660,22 +660,6 @@ android:paddingStart="16dp"
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal"
-                    android:weightSum="1">
-
-                    <TextView
-                        android:id="@+id/chipAppRun"
-                        style="@style/InfoChip"
-                        android:layout_weight="1"
-                        android:text="进程运行" />
-
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
                     android:layout_marginTop="12dp"
                     android:orientation="vertical">
 
@@ -684,6 +668,8 @@ android:paddingStart="16dp"
                     <include layout="@layout/row_info" android:id="@+id/rowDeviceTime" />
                     <View style="@style/Divider" />
                     <include layout="@layout/row_info" android:id="@+id/rowTemperature" />
+                    <View style="@style/Divider" />
+                    <include layout="@layout/row_info" android:id="@+id/rowDisconnect" />
                 </LinearLayout>
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
