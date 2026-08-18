@@ -212,9 +212,9 @@ android:paddingStart="16dp"
                         android:layout_height="wrap_content"
                         android:layout_marginStart="@dimen/dp_6"
                         android:layout_weight="1"
-                        android:text="重新连接"
+                        android:text="重新配对"
                         android:stateListAnimator="@animator/btn_press_scale"
-                        app:icon="@drawable/ic_power"
+                        app:icon="@drawable/ic_scan"
                         app:iconTint="@color/md_primary" />
                 </LinearLayout>
 

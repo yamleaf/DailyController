@@ -1,6 +1,7 @@
 package com.yample.daily.controller
 
 import android.os.Bundle
+import android.content.ClipboardManager
 import android.content.Intent
 import android.content.res.ColorStateList
 import android.util.Log
@@ -16,13 +17,18 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.room.Room
+import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.snackbar.Snackbar
 import com.google.android.material.transition.MaterialFadeThrough
+import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 import com.yample.daily.controller.databinding.ActivityDeviceControlBinding
+import com.yample.daily.controller.databinding.BottomSheetAddDeviceBinding
 import com.yample.mqttprotocol.BindingPayload
 import com.yample.mqttprotocol.BrokerUtils
 import com.yample.mqttprotocol.Hkdf
@@ -231,7 +237,8 @@ class DeviceControlActivity : AppCompatActivity() {
             }
             onRePairClick = { retryPair() }
             onRetryClick = { retryConnection() }
-            onReconnectClick = { retryConnection() }
+            // 「重新配对」按钮（原"重新连接"）：弹添加设备底部弹窗（扫码/剪贴板），更新当前设备配对
+            onReconnectClick = { showRePairSheet() }
             onAlertClick = { record -> showAlertDialog(record) }
             setRemoteEnabled(remoteEnabled)
         }
@@ -1544,7 +1551,7 @@ val calendar = CalendarSnapshot(
             overviewFragment.setActionsEnabled(false)
             Snackbar.make(
                 binding.root,
-                "被控端无响应（疑似离线），请确认设备状态后重新连接",
+                "被控端无响应（疑似离线）：可尝试给被控端发送通知指令（如「DT#状态查询」）触发响应，或确认设备状态后重新连接",
                 Snackbar.LENGTH_LONG
             ).setAction("重新连接") {
                 overviewFragment.setRefreshing(false)
@@ -1672,6 +1679,89 @@ val calendar = CalendarSnapshot(
         } else {
             setConnStatus("连接中…", false)
             initMqtt()
+        }
+    }
+
+    // ===================== 重新配对（原「重新连接」按钮） =====================
+
+    /** 「重新配对」按钮：弹添加设备底部弹窗（扫码 / 剪贴板），复用被控端生成的绑定二维码重新配对当前设备 */
+    private fun showRePairSheet() {
+        val sheet = BottomSheetDialog(this)
+        val sheetBinding = BottomSheetAddDeviceBinding.inflate(layoutInflater)
+        sheet.setContentView(sheetBinding.root)
+        sheetBinding.sheetScan.setOnClickListener {
+            sheet.dismiss()
+            rePairLauncher.launch(
+                ScanOptions()
+                    .setCaptureActivity(ScanActivity::class.java)
+                    .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+            )
+        }
+        sheetBinding.sheetClipboard.setOnClickListener {
+            sheet.dismiss()
+            rePairFromClipboard()
+        }
+        sheetBinding.sheetCancel.setOnClickListener { sheet.dismiss() }
+        sheet.show()
+    }
+
+    /** 重新配对扫码结果：解析绑定二维码 → 更新当前设备绑定信息并重新配对 */
+    private val rePairLauncher = registerForActivityResult(ScanContract()) { result ->
+        val contents = result.contents ?: return@registerForActivityResult
+        try {
+            val payload = Gson().fromJson(contents, BindingPayload::class.java)
+            if (payload.broker.isNotBlank() && payload.deviceId.isNotBlank()) {
+                applyRePair(payload)
+            } else {
+                Toast.makeText(this, "二维码缺少必要字段（broker/deviceId）", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            Toast.makeText(this, "无效的二维码格式", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /** 重新配对剪贴板导入：读取被控端复制到剪贴板的绑定 JSON，解析后重新配对当前设备 */
+    private fun rePairFromClipboard() {
+        val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+        val text = cm.primaryClip?.getItemAt(0)?.text?.toString()
+        if (text.isNullOrBlank()) {
+            Toast.makeText(this, "剪贴板为空，请先在被控端「远程控制」页点「生成绑定二维码」（会自动复制到剪贴板）", Toast.LENGTH_LONG).show()
+            return
+        }
+        try {
+            val payload = Gson().fromJson(text, BindingPayload::class.java)
+            if (payload.broker.isNotBlank() && payload.deviceId.isNotBlank()) {
+                applyRePair(payload)
+            } else {
+                Toast.makeText(this, "剪贴板内容缺少必要字段（broker/deviceId）", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            Toast.makeText(this, "剪贴板内容不是有效的配对信息", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
+     * 应用重新配对：用新绑定二维码更新当前设备（清空会话密钥与绑定态 → 走未配对流程重新握手），
+     * 然后重建 MQTT 连接自动发起配对。
+     */
+    private fun applyRePair(payload: BindingPayload) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val updated = device.copy(
+                broker = payload.broker,
+                ctlUser = payload.ctlUser,
+                ctlPass = payload.ctlPass,
+                sessionSecret = "",
+                pairingToken = payload.pairingToken,
+                bound = false
+            )
+            db.deviceDao().update(updated)
+            withContext(Dispatchers.Main) {
+                device = updated
+                Toast.makeText(this@DeviceControlActivity, "已更新配对信息，正在重新配对…", Toast.LENGTH_SHORT).show()
+                setConnStatus("连接中…", false)
+                disconnectMqtt()
+                initMqtt()
+            }
         }
     }
 
