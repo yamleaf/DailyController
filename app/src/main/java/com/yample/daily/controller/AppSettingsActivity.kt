@@ -151,7 +151,6 @@ class AppSettingsActivity : AppCompatActivity() {
         val minSdk = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) appInfo.minSdkVersion else 0
 
         val rows = linkedMapOf(
-            "Git 提交" to BuildConfig.GIT_SHA,
             "版本号" to BuildConfig.VERSION_NAME,
             "Version Code" to BuildConfig.VERSION_CODE.toString(),
             "构建来源" to BuildConfig.BUILD_SOURCE,
