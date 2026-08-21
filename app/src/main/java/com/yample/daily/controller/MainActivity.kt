@@ -108,14 +108,14 @@ class MainActivity : AppCompatActivity() {
             hour < 18 -> "下午好"
             else -> "晚上好"
         }
-        // 设置齿轮：控制端 app 级设置（主题外观 / 版本信息）
+        // Hero 卡图标：客户端管理（配置多个后台并管理在线客户端）
         binding.btnHeroSettings.setOnClickListener {
-            startActivity(Intent(this, AppSettingsActivity::class.java))
+            startActivity(Intent(this, ServerlessManagerActivity::class.java))
         }
-        // 顶栏菜单：客户端管理（配置多个后台并管理在线客户端）
+        // 顶栏菜单：控制端 app 级设置（主题外观 / 版本信息）
         binding.toolbarMain.setOnMenuItemClickListener { item ->
-            if (item.itemId == R.id.action_client_manager) {
-                startActivity(Intent(this, ServerlessManagerActivity::class.java))
+            if (item.itemId == R.id.action_app_settings) {
+                startActivity(Intent(this, AppSettingsActivity::class.java))
                 true
             } else {
                 false
@@ -183,21 +183,27 @@ class MainActivity : AppCompatActivity() {
 
     /** 剪贴板配对：读取被控端「生成绑定二维码」时复制到剪贴板的配对信息（同一份 JSON），解析后写库并进入控制页自动配对 */
     private fun importFromClipboard() {
-        val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
-        val text = cm.primaryClip?.getItemAt(0)?.text?.toString()
-        if (text.isNullOrBlank()) {
-            Toast.makeText(this, "剪贴板为空，请先在被控端「远程控制」页点「生成绑定二维码」（会自动复制到剪贴板）", Toast.LENGTH_LONG).show()
-            return
-        }
         try {
-            val payload = Gson().fromJson(text, BindingPayload::class.java)
-            if (payload.broker.isNotBlank() && payload.deviceId.isNotBlank()) {
-                addDevice(payload, navigate = true)
-            } else {
-                Toast.makeText(this, "剪贴板内容缺少必要字段（broker/deviceId）", Toast.LENGTH_SHORT).show()
+            val cm = getSystemService(CLIPBOARD_SERVICE) as? ClipboardManager ?: run {
+                Toast.makeText(this, "剪贴板服务不可用", Toast.LENGTH_SHORT).show(); return
+            }
+            val text = cm.primaryClip?.getItemAt(0)?.text?.toString()
+            if (text.isNullOrBlank()) {
+                Toast.makeText(this, "剪贴板为空，请先在被控端「远程控制」页点「生成绑定二维码」（会自动复制到剪贴板）", Toast.LENGTH_LONG).show()
+                return
+            }
+            try {
+                val payload = Gson().fromJson(text, BindingPayload::class.java)
+                if (payload != null && payload.broker.isNotBlank() && payload.deviceId.isNotBlank()) {
+                    addDevice(payload, navigate = true)
+                } else {
+                    Toast.makeText(this, "剪贴板内容缺少必要字段（broker/deviceId）", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(this, "剪贴板内容不是有效的配对信息", Toast.LENGTH_SHORT).show()
             }
         } catch (e: Exception) {
-            Toast.makeText(this, "剪贴板内容不是有效的配对信息", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "读取剪贴板失败：${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -206,7 +212,7 @@ class MainActivity : AppCompatActivity() {
         val contents = result.contents ?: return@registerForActivityResult
         try {
             val payload = Gson().fromJson(contents, BindingPayload::class.java)
-            if (payload.broker.isNotBlank() && payload.deviceId.isNotBlank()) {
+            if (payload != null && payload.broker.isNotBlank() && payload.deviceId.isNotBlank()) {
                 addDevice(payload, navigate = true)
             } else {
                 Toast.makeText(this, "二维码缺少必要字段（broker/deviceId）", Toast.LENGTH_SHORT).show()

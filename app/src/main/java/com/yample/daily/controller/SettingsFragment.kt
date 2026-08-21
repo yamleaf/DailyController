@@ -368,7 +368,7 @@ class SettingsFragment : Fragment(), SnapshotFragment {
 
     /** 自定义工作日：多选星期（周一~周日），序列化为 "1,2,3,4,5" 下发 cw 字段 */
     private fun showWorkdayDialog(item: SettingItem) {
-        val raw = item.value?.toString().orEmpty()
+        val raw = item.value.toString()
         val selected = parseWorkdayValues(raw).toMutableSet()
         val labels = WEEKDAY_LABELS
         val checked = BooleanArray(7) { it + 1 in selected }

@@ -3,6 +3,8 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:clipChildren="false"
+    android:clipToPadding="false"
     android:background="@color/md_background">
 
     <com.google.android.material.appbar.AppBarLayout
@@ -60,223 +62,18 @@
 
     </com.google.android.material.appbar.AppBarLayout>
 
-    <!-- ═════ Fragment 容器（全屏，无底边距；导航栏以 overlay 覆盖） ═════ -->
+    <!-- ═════ Fragment 容器（参照 DT：不预留底部 padding，内容滚动到导航栏后方，
+          由悬浮导航的磨砂模糊透出下方信息；各 fragment 自带 100dp 底部 padding 防遮挡） ═════ -->
     <androidx.fragment.app.FragmentContainerView
         android:id="@+id/fragmentContainer"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:clipToPadding="false"
         app:layout_behavior="@string/appbar_scrolling_view_behavior" />
 
-    <!-- ═════ 悬浮导航栏（overlay，5 项均等分布，自绘圆角投影卡片） ═════ -->
-    <LinearLayout
-        android:id="@+id/navCard"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom"
-        android:layout_marginStart="16dp"
-        android:layout_marginEnd="16dp"
-        android:layout_marginBottom="16dp"
-        android:orientation="horizontal"
-        android:paddingTop="6dp"
-        android:paddingBottom="8dp"
-        android:clipToPadding="false"
-        android:background="@drawable/bg_nav_floating">
-
-        <!-- ── ① 日历 ── -->
-        <LinearLayout
-            android:id="@+id/navCalendar"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical"
-            android:gravity="center_horizontal"
-            android:clickable="true"
-            android:focusable="true"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:paddingTop="4dp"
-            android:paddingBottom="2dp">
-
-            <ImageView
-                android:id="@+id/iconCalendar"
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:src="@drawable/ic_calendar"
-                android:contentDescription="日历" />
-
-            <TextView
-                android:id="@+id/labelCalendar"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:text="日历"
-                android:textSize="11sp"
-                android:textColor="@color/md_onSurfaceVariant" />
-
-            <View
-                android:id="@+id/lineCalendar"
-                android:layout_width="20dp"
-                android:layout_height="2dp"
-                android:layout_marginTop="4dp"
-                android:background="@color/md_primary"
-                android:visibility="gone" />
-        </LinearLayout>
-
-        <!-- ── ② 任务 ── -->
-        <LinearLayout
-            android:id="@+id/navTasks"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical"
-            android:gravity="center_horizontal"
-            android:clickable="true"
-            android:focusable="true"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:paddingTop="4dp"
-            android:paddingBottom="2dp">
-
-            <ImageView
-                android:id="@+id/iconTasks"
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:src="@drawable/ic_timer"
-                android:contentDescription="任务" />
-
-            <TextView
-                android:id="@+id/labelTasks"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:text="任务"
-                android:textSize="11sp"
-                android:textColor="@color/md_onSurfaceVariant" />
-
-            <View
-                android:id="@+id/lineTasks"
-                android:layout_width="20dp"
-                android:layout_height="2dp"
-                android:layout_marginTop="4dp"
-                android:background="@color/md_primary"
-                android:visibility="gone" />
-        </LinearLayout>
-
-        <!-- ── ③ 总览 ── -->
-        <LinearLayout
-            android:id="@+id/navOverview"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical"
-            android:gravity="center_horizontal"
-            android:clickable="true"
-            android:focusable="true"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:paddingTop="4dp"
-            android:paddingBottom="2dp">
-
-            <ImageView
-                android:id="@+id/iconOverview"
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:src="@drawable/ic_overview"
-                android:contentDescription="总览" />
-
-            <TextView
-                android:id="@+id/labelOverview"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:text="总览"
-                android:textSize="11sp"
-                android:textColor="@color/md_onSurfaceVariant" />
-
-            <View
-                android:id="@+id/lineOverview"
-                android:layout_width="20dp"
-                android:layout_height="2dp"
-                android:layout_marginTop="4dp"
-                android:background="@color/md_primary"
-                android:visibility="gone" />
-        </LinearLayout>
-
-        <!-- ── ④ 设备 ── -->
-        <LinearLayout
-            android:id="@+id/navDevice"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical"
-            android:gravity="center_horizontal"
-            android:clickable="true"
-            android:focusable="true"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:paddingTop="4dp"
-            android:paddingBottom="2dp">
-
-            <ImageView
-                android:id="@+id/iconDevice"
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:src="@drawable/ic_device"
-                android:contentDescription="设备" />
-
-            <TextView
-                android:id="@+id/labelDevice"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:text="设备"
-                android:textSize="11sp"
-                android:textColor="@color/md_onSurfaceVariant" />
-
-            <View
-                android:id="@+id/lineDevice"
-                android:layout_width="20dp"
-                android:layout_height="2dp"
-                android:layout_marginTop="4dp"
-                android:background="@color/md_primary"
-                android:visibility="gone" />
-        </LinearLayout>
-
-        <!-- ── ⑤ 设置 ── -->
-        <LinearLayout
-            android:id="@+id/navSettings"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical"
-            android:gravity="center_horizontal"
-            android:clickable="true"
-            android:focusable="true"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:paddingTop="4dp"
-            android:paddingBottom="2dp">
-
-            <ImageView
-                android:id="@+id/iconSettings"
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:src="@drawable/ic_settings"
-                android:contentDescription="设置" />
-
-            <TextView
-                android:id="@+id/labelSettings"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:text="设置"
-                android:textSize="11sp"
-                android:textColor="@color/md_onSurfaceVariant" />
-
-            <View
-                android:id="@+id/lineSettings"
-                android:layout_width="20dp"
-                android:layout_height="2dp"
-                android:layout_marginTop="4dp"
-                android:background="@color/md_primary"
-                android:visibility="gone" />
-        </LinearLayout>
-
-    </LinearLayout>
+<!-- 悬浮导航栏 -->
+    <include
+        android:id="@+id/navBarDc"
+        layout="@layout/nav_bar_dc" />
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

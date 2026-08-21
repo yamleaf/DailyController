@@ -4,7 +4,6 @@ import android.animation.ArgbEvaluator
 import android.animation.ValueAnimator
 import android.graphics.Color
 import android.os.Bundle
-import android.text.TextUtils
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -13,6 +12,7 @@ import android.widget.Toast
 import androidx.fragment.app.Fragment
 import com.yample.mqttprotocol.MqttPacket
 import com.yample.mqttprotocol.Protocol
+import androidx.core.content.ContextCompat
 import com.yample.daily.controller.databinding.FragmentOverviewBinding
 import com.yample.daily.controller.databinding.RowInfoBinding
 import java.text.SimpleDateFormat
@@ -53,7 +53,6 @@ class OverviewFragment : Fragment(), SnapshotFragment {
     private var lastConnText = ""
     private var lastConnOnline = false
     private var appliedStatusKey: String? = null
-    private var pulseAnim: ValueAnimator? = null
     /** 首帧淡入：首次 render 时内容从半透明淡入，配合探活进度条给出「数据到达」观感 */
     private var firstRender = true
     /** D2：快捷动作是否处于下发中（防重复点击 + 加载态） */
@@ -66,6 +65,10 @@ class OverviewFragment : Fragment(), SnapshotFragment {
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentOverviewBinding.inflate(inflater, container, false)
+        binding.switchRemote.thumbTintList =
+            ContextCompat.getColorStateList(requireContext(), R.color.switch_thumb_mqtt)
+        binding.switchRemote.trackTintList =
+            ContextCompat.getColorStateList(requireContext(), R.color.switch_track_mqtt)
         return binding.root
     }
 
@@ -83,8 +86,6 @@ class OverviewFragment : Fragment(), SnapshotFragment {
             refreshAlerts(emptyList())
         }
         binding.swipeRefresh.setOnRefreshListener { onSwipeRefresh() }
-        binding.btnRefresh.setOnClickListener { triggerRefresh() }
-        binding.btnReconnect.setOnClickListener { onReconnectClick?.invoke() }
         binding.switchRemote.setOnCheckedChangeListener { _, isChecked ->
             if (!remoteInitializing) onRemoteToggle?.invoke(isChecked)
         }
@@ -95,8 +96,6 @@ class OverviewFragment : Fragment(), SnapshotFragment {
         binding.btnActLoopOn.setOnClickListener { onLoopToggle?.invoke(true) }
         binding.btnActLoopOff.setOnClickListener { onLoopToggle?.invoke(false) }
 
-        // D5：未配对时显示「重新配对」入口
-        binding.btnRePair.setOnClickListener { onRePairClick?.invoke() }
         snapshot?.let { render(it) }
         pendingConnStatus?.let { (text, online) ->
             pendingConnStatus = null
@@ -194,33 +193,14 @@ class OverviewFragment : Fragment(), SnapshotFragment {
         val key = "$lastConnText|$lastConnOnline"
         if (appliedStatusKey == key) return
         appliedStatusKey = key
-        val (color, pulse) = resolveStatus(lastConnText, lastConnOnline, ctx)
+        resolveStatus(lastConnText, lastConnOnline, ctx)
 
         // 使用球面渐变圆形作为主状态点（内置高光，不参与 tint）
         binding.dotStatus.setBackgroundResource(sphereForStatus(lastConnText, lastConnOnline))
-        // 光晕保持纯色平铺，用于动态 tint 光环
-        binding.dotHalo.setBackgroundResource(R.drawable.bg_dot_offline)
-        animateTint(binding.dotHalo, color)
         // D6：连接失败时状态灯可点击重试
         val failed = lastConnText == "连接失败"
         binding.dotStatus.isClickable = failed
         binding.dotStatus.setOnClickListener { if (failed) onRetryClick?.invoke() }
-        binding.dotHalo.isClickable = failed
-        binding.dotHalo.setOnClickListener { if (failed) onRetryClick?.invoke() }
-        pulseAnim?.cancel()
-        pulseAnim = null
-        if (pulse) {
-            val anim = ValueAnimator.ofFloat(0.14f, 0.5f).apply {
-                duration = 900
-                repeatCount = ValueAnimator.INFINITE
-                repeatMode = ValueAnimator.REVERSE
-                addUpdateListener { binding.dotHalo.alpha = it.animatedValue as Float }
-            }
-            anim.start()
-            pulseAnim = anim
-        } else {
-            binding.dotHalo.alpha = 0.3f
-        }
     }
 
     /** 状态 → (颜色, 是否脉冲)：绿=在线已配对 / 琥珀=配对中·未配对·连接中 / 红=失败·错误·无心跳 / 灰=已解绑·离线·连接中 */
@@ -270,8 +250,6 @@ class OverviewFragment : Fragment(), SnapshotFragment {
      */
     fun setControlsEnabled(enabled: Boolean) {
         if (_binding == null) return
-        binding.btnRefresh.isEnabled = enabled
-        binding.btnRefresh.alpha = if (enabled) 1f else 0.4f
         binding.switchRemote.isEnabled = enabled
         binding.switchRemote.alpha = if (enabled) 1f else 0.4f
         binding.swipeRefresh.isEnabled = enabled
@@ -453,9 +431,6 @@ class OverviewFragment : Fragment(), SnapshotFragment {
 
         applyConnStatus()
 
-        // D5：未配对时显示「重新配对」入口（hero 卡内重配按钮）
-        binding.btnRePair.visibility = if (device.sessionSecret.isNotBlank()) View.GONE else View.VISIBLE
-
         // 运行概览
         val battery = s.runtime["battery"]?.toIntOrNull() ?: -1
         binding.tvBatteryPct.text = if (battery >= 0) "$battery%" else "--%"
@@ -486,24 +461,15 @@ class OverviewFragment : Fragment(), SnapshotFragment {
         val svcMin = s.runtime["serviceRunningMinutes"]?.toLongOrNull() ?: -1L
         setChip(binding.chipServiceRun, if (svcMin >= 0) "服务运行 ${formatUptime(svcMin)}" else "服务运行", false)
 
-        // 任务调度描述 / 设备时间 / 电池温度（快照补齐字段）
-        setRow(binding.rowSchedulerDesc, "任务调度", s.runtime["schedulerDesc"] ?: "--")
-        // #6 调度描述文字可能很长 → 跑马灯
-        binding.rowSchedulerDesc.tvRowValue.apply {
-            setSingleLine(true)
-            ellipsize = TextUtils.TruncateAt.MARQUEE
-            marqueeRepeatLimit = -1 // 无限循环
-            isFocusable = true
-            isFocusableInTouchMode = true
-            setSelected(true)
-        }
-        setRow(binding.rowDeviceTime, "设备时间", s.runtime["currentTime"] ?: "--")
-        setRow(binding.rowTemperature, "电池温度", s.runtime["temperature"] ?: "--")
+        // 任务调度描述 / 设备时间 / 电池温度 / 掉线统计（小长条样式，与上方状态条一致）
+        setChip(binding.chipScheduleDesc, s.runtime["schedulerDesc"] ?: "暂无调度描述", false)
+        setChip(binding.chipDeviceTime, "设备时间 ${s.runtime["currentTime"] ?: "--"}", false)
+        setChip(binding.chipTemperature, "电池温度 ${s.runtime["temperature"] ?: "--"}", false)
         // 掉线统计（被控端 runtime 上报：所有保活模式统一计数，跨天重置）
         val discCount = s.runtime["mqttDisconnectCount"]?.toIntOrNull() ?: 0
         val discAt = s.runtime["mqttLastDisconnectAt"] ?: "—"
-        val discText = if (discCount <= 0) "今日 0 次" else "今日 $discCount 次 · 最近 $discAt"
-        setRow(binding.rowDisconnect, "掉线统计", discText)
+        val discText = if (discCount <= 0) "今日 0 次掉线" else "今日 $discCount 次 · 最近 $discAt"
+        setChip(binding.chipDisconnect, discText, false)
 
         // 设备信息（已迁移至「设置」页）
 
@@ -580,8 +546,6 @@ class OverviewFragment : Fragment(), SnapshotFragment {
     override fun onDestroyView() {
         super.onDestroyView()
         cancelSwipeRefresh()
-        pulseAnim?.cancel()
-        pulseAnim = null
         _binding = null
     }
 }

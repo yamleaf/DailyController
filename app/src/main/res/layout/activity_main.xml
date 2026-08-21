@@ -33,17 +33,18 @@
             android:layout_height="match_parent"
             android:orientation="vertical">
 
-        <!-- ============ Hero 渐变头部卡（问候语 + 统计数字） ============ -->
+        <!-- ============ Hero 统计卡（三张白底淡彩小卡，§5.1.2） ============ -->
         <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginStart="@dimen/dp_16"
             android:layout_marginEnd="@dimen/dp_16"
             android:layout_marginTop="@dimen/dp_8"
-            app:cardBackgroundColor="@color/md_primary"
-            app:cardCornerRadius="@dimen/radius_xl"
-            app:cardElevation="4dp"
-            app:strokeWidth="0dp">
+            app:cardBackgroundColor="@color/md_surface"
+            app:cardCornerRadius="@dimen/radius_card"
+            app:cardElevation="0dp"
+            app:strokeWidth="1dp"
+            app:strokeColor="@color/md_outlineVariant">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -51,7 +52,7 @@
                 android:orientation="vertical"
                 android:padding="@dimen/dp_20">
 
-                <!-- 第一行：标题 + 问候语 + 设置齿轮 -->
+                <!-- 第一行：标题 + 问候语 -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -68,7 +69,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="远程控制"
-                            android:textColor="#B3FFFFFF"
+                            android:textColor="@color/md_onSurfaceVariant"
                             android:textSize="@dimen/sp_13" />
 
                         <TextView
@@ -77,7 +78,7 @@
                             android:layout_height="wrap_content"
                             android:layout_marginTop="@dimen/dp_2"
                             android:text="设备列表"
-                            android:textColor="#99FFFFFF"
+                            android:textColor="@color/md_onSurface"
                             android:textSize="14sp" />
                     </LinearLayout>
 
@@ -88,11 +89,11 @@
                         android:background="?attr/selectableItemBackgroundBorderless"
                         android:contentDescription="@null"
                         android:padding="6dp"
-                        android:src="@drawable/daily_ic_settings"
-                        app:tint="#B3FFFFFF" />
+                        android:src="@drawable/ic_server"
+                        app:tint="@color/md_onSurfaceVariant" />
                 </LinearLayout>
 
-                <!-- 第二行：统计数字（总设备 / 在线 / 异常） -->
+                <!-- 第二行：三张统计小卡（紫/绿/红淡彩底） -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -100,11 +101,13 @@
                     android:orientation="horizontal"
                     android:weightSum="3">
 
+                    <!-- 总设备：淡紫底 -->
                     <LinearLayout
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:background="#1AFFFFFF"
+                        android:background="@drawable/bg_action_tile"
+                        android:backgroundTint="@color/brand_purple_container"
                         android:gravity="center"
                         android:orientation="vertical"
                         android:paddingTop="@dimen/dp_10"
@@ -115,7 +118,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="0"
-                            android:textColor="@android:color/white"
+                            android:textColor="@color/brand_purple"
                             android:textSize="24sp"
                             android:textStyle="bold" />
 
@@ -124,16 +127,18 @@
                             android:layout_height="wrap_content"
                             android:layout_marginTop="2dp"
                             android:text="总设备"
-                            android:textColor="#B3FFFFFF"
+                            android:textColor="@color/md_onSurfaceVariant"
                             android:textSize="11sp" />
                     </LinearLayout>
 
+                    <!-- 在线：淡绿底 -->
                     <LinearLayout
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_marginStart="8dp"
                         android:layout_weight="1"
-                        android:background="#1AFFFFFF"
+                        android:background="@drawable/bg_action_tile"
+                        android:backgroundTint="@color/md_tertiaryContainer"
                         android:gravity="center"
                         android:orientation="vertical"
                         android:paddingTop="@dimen/dp_10"
@@ -144,7 +149,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="0"
-                            android:textColor="@color/md_success"
+                            android:textColor="@color/md_tertiary"
                             android:textSize="24sp"
                             android:textStyle="bold" />
 
@@ -155,16 +160,18 @@
                             android:drawableStart="@drawable/dot_online"
                             android:drawablePadding="4dp"
                             android:text="在线"
-                            android:textColor="#B3FFFFFF"
+                            android:textColor="@color/md_onSurfaceVariant"
                             android:textSize="11sp" />
                     </LinearLayout>
 
+                    <!-- 离线：淡红底 -->
                     <LinearLayout
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_marginStart="8dp"
                         android:layout_weight="1"
-                        android:background="#1AFFFFFF"
+                        android:background="@drawable/bg_action_tile"
+                        android:backgroundTint="@color/md_errorContainer"
                         android:gravity="center"
                         android:orientation="vertical"
                         android:paddingTop="@dimen/dp_10"
@@ -186,14 +193,14 @@
                             android:drawableStart="@drawable/dot_offline"
                             android:drawablePadding="4dp"
                             android:text="异常"
-                            android:textColor="#B3FFFFFF"
+                            android:textColor="@color/md_onSurfaceVariant"
                             android:textSize="11sp" />
                     </LinearLayout>
                 </LinearLayout>
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
-        <!-- ============ 搜索栏 ============ -->
+        <!-- 搜索栏（无边框阴影样式，§5.1.3） -->
         <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -201,10 +208,9 @@
             android:layout_marginEnd="@dimen/dp_16"
             android:layout_marginTop="@dimen/dp_12"
             app:cardBackgroundColor="@color/md_surface"
-            app:cardCornerRadius="@dimen/radius_xl"
-            app:cardElevation="1dp"
-            app:strokeColor="@color/md_outlineVariant"
-            app:strokeWidth="1dp">
+            app:cardCornerRadius="@dimen/radius_input"
+            app:cardElevation="0dp"
+            app:strokeWidth="0dp">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -355,9 +361,8 @@
         app:elevation="@dimen/elev_fab"
         app:icon="@drawable/ic_add"
         app:iconTint="@color/md_onPrimaryContainer"
-        app:layout_anchor="@id/rvDevices"
-        app:layout_anchorGravity="bottom|end"
         app:rippleColor="@color/md_primary"
-        android:stateListAnimator="@animator/btn_press_scale" />
+        app:layout_anchor="@id/swipeRefresh"
+        app:layout_anchorGravity="bottom|end" />
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

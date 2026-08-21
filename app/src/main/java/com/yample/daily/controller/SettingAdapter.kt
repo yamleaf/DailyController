@@ -175,12 +175,12 @@ class SettingAdapter(
                             vh.binding.layoutWorkdayDots.visibility = View.VISIBLE
                             renderWorkdayDots(
                                 vh.binding.layoutWorkdayDots,
-                                setting.value?.toString().orEmpty()
+                                setting.value.toString()
                             )
                             vh.binding.tvSettingSub.text = "点击设置工作日"
                         } else {
                             vh.binding.tvSettingValue.visibility = View.VISIBLE
-                            vh.binding.tvSettingValue.text = setting.value?.toString().orEmpty()
+                            vh.binding.tvSettingValue.text = setting.value.toString()
                             vh.binding.layoutWorkdayDots.visibility = View.GONE
                             vh.binding.tvSettingSub.text = ""
                         }

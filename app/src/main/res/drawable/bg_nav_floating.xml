@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- 悬浮导航卡片背景（DC，与 DT bg_frosted_nav 完全同款）：
+     投影 + 实色表面卡片 + 细描边 = 浮起质感；BlurView 仍模糊下方内容，卡片本身不透明。
+     圆角收敛到令牌 radius_floating_nav(28dp)。 -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- 柔和投影：自绘，避开 MaterialCardView 阴影被渲染成白块的问题 -->
+    <!-- 柔和投影层 -->
     <item
         android:left="0dp"
         android:top="4dp"
@@ -9,22 +12,22 @@
         android:bottom="0dp">
         <shape android:shape="rectangle">
             <solid android:color="#1A000000" />
-            <corners android:radius="24dp" />
+            <corners android:radius="@dimen/radius_floating_nav" />
         </shape>
     </item>
 
-    <!-- 表面卡片：圆角 + 细描边，作为悬浮容器 -->
+    <!-- 表面卡片：半透明磨砂 + 细描边，让导航栏非遮挡区域可透见下方文字 -->
     <item
         android:left="2dp"
         android:top="0dp"
         android:right="2dp"
         android:bottom="4dp">
         <shape android:shape="rectangle">
-            <solid android:color="@color/md_surface" />
+            <solid android:color="@color/color_nav_frost" />
             <stroke
                 android:width="1dp"
                 android:color="@color/md_outlineVariant" />
-            <corners android:radius="24dp" />
+            <corners android:radius="@dimen/radius_floating_nav" />
         </shape>
     </item>
 

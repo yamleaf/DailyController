@@ -78,7 +78,7 @@
         android:foreground="?attr/selectableItemBackground"
         app:cardBackgroundColor="@color/md_surface"
         app:cardCornerRadius="@dimen/radius_xl"
-        app:cardElevation="2dp"
+        app:cardElevation="0dp"
         app:strokeColor="@color/md_outlineVariant"
         app:strokeWidth="1dp">
 

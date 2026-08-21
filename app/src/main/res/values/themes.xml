@@ -1,19 +1,19 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- ShapeAppearance 圆角体系（与 DT 协同） -->
+    <!-- ShapeAppearance 圆角体系（收敛到 protocol 令牌阶梯，与 DT 协同） -->
     <style name="ShapeAppearance.DC.Small" parent="ShapeAppearance.Material3.SmallComponent">
-        <item name="cornerSize">4dp</item>
+        <item name="cornerSize">@dimen/dp_4</item>
     </style>
     <style name="ShapeAppearance.DC.Medium" parent="ShapeAppearance.Material3.MediumComponent">
-        <item name="cornerSize">8dp</item>
+        <item name="cornerSize">@dimen/radius_pill</item>
     </style>
     <style name="ShapeAppearance.DC.Large" parent="ShapeAppearance.Material3.LargeComponent">
-        <item name="cornerSize">16dp</item>
+        <item name="cornerSize">@dimen/radius_dialog</item>
     </style>
     <style name="ShapeAppearance.DC.XL" parent="ShapeAppearance.Material3.LargeComponent">
-        <item name="cornerSize">20dp</item>
+        <item name="cornerSize">@dimen/radius_nav_card</item>
     </style>
     <style name="ShapeAppearance.DC.Full" parent="ShapeAppearance.Material3.LargeComponent">
-        <item name="cornerSize">28dp</item>
+        <item name="cornerSize">@dimen/radius_floating_nav</item>
     </style>
 
     <style name="Theme.DailyController" parent="Theme.Material3.DayNight.NoActionBar">
@@ -35,6 +35,12 @@
         <item name="colorOnSurfaceVariant">@color/md_onSurfaceVariant</item>
         <item name="colorOutline">@color/md_outline</item>
         <item name="colorOutlineVariant">@color/md_outlineVariant</item>
+        <!-- 波纹色（品牌蓝 8%）替代系统默认灰 -->
+        <item name="android:colorControlHighlight">@color/color_ripple</item>
+        <!-- 统一 Snackbar（§3.16） -->
+        <item name="snackbarStyle">@style/Widget.Daily.Snackbar</item>
+        <item name="snackbarTextViewStyle">@style/TextAppearance.Daily.Snackbar</item>
+        <item name="snackbarButtonStyle">@style/Widget.Daily.Snackbar.Action</item>
         <item name="android:colorBackground">@color/md_background</item>
         <item name="android:windowBackground">@color/md_background</item>
         <!-- 透明状态栏：顶栏渐变延伸到状态栏区域，内容靠 AppBar padding 避开重叠 -->
@@ -68,9 +74,9 @@
         <item name="android:windowExitAnimation">@anim/dialog_exit</item>
     </style>
 
-    <!-- 统一输入框样式（12dp 圆角，双端一致） -->
+    <!-- 统一输入框样式（10dp 圆角，双端一致） -->
     <style name="ShapeAppearance.DC.Input" parent="ShapeAppearance.Material3.LargeComponent">
-        <item name="cornerSize">12dp</item>
+        <item name="cornerSize">@dimen/radius_input</item>
     </style>
     <style name="Widget.DC.TextInput.Outlined" parent="Widget.Material3.TextInputLayout.OutlinedBox">
         <item name="shapeAppearance">@style/ShapeAppearance.DC.Input</item>

@@ -1,172 +1,176 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:maxHeight="480dp">
+    android:orientation="vertical"
+    android:paddingHorizontal="20dp"
+    android:paddingTop="16dp">
 
-    <LinearLayout
+    <androidx.core.widget.NestedScrollView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:paddingHorizontal="24dp"
-        android:paddingTop="8dp"
-        android:paddingBottom="4dp">
+        android:maxHeight="400dp"
+        android:paddingTop="0dp">
 
-        <TextView
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="发送渠道"
-            android:textColor="@color/md_onSurfaceVariant"
-            android:textSize="12sp" />
+            android:orientation="vertical">
 
-        <RadioGroup
-            android:id="@+id/rgChannel"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:orientation="horizontal">
-
-            <com.google.android.material.radiobutton.MaterialRadioButton
-                android:id="@+id/rbEmail"
-                android:layout_width="0dp"
+            <TextView
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="邮件"
-                android:textSize="14sp" />
+                android:text="发送渠道"
+                android:textColor="@color/md_onSurfaceVariant"
+                android:textSize="12sp" />
 
-            <com.google.android.material.radiobutton.MaterialRadioButton
-                android:id="@+id/rbWx"
-                android:layout_width="0dp"
+            <RadioGroup
+                android:id="@+id/rgChannel"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
+                android:layout_marginTop="4dp"
+                android:orientation="horizontal">
+
+                <com.google.android.material.radiobutton.MaterialRadioButton
+                    android:id="@+id/rbEmail"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="邮件"
+                    android:textSize="14sp" />
+
+                <com.google.android.material.radiobutton.MaterialRadioButton
+                    android:id="@+id/rbWx"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="企业微信"
+                    android:textSize="14sp" />
+            </RadioGroup>
+
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/tilTitle"
+                style="@style/Widget.DC.TextInput.Outlined"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:hint="消息标题">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/etTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="text"
+                    android:maxLines="1" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <TextView
+                android:id="@+id/tvGroupWx"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
                 android:text="企业微信"
-                android:textSize="14sp" />
-        </RadioGroup>
+                android:textColor="@color/md_onSurfaceVariant"
+                android:textSize="12sp"
+                android:visibility="gone" />
 
-        <com.google.android.material.textfield.TextInputLayout
-            android:id="@+id/tilTitle"
-            style="@style/Widget.DC.TextInput.Outlined"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:hint="消息标题">
-
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/etTitle"
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/tilWxKey"
+                style="@style/Widget.DC.TextInput.Outlined"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:inputType="text"
-                android:maxLines="1" />
-        </com.google.android.material.textfield.TextInputLayout>
+                android:layout_marginTop="4dp"
+                android:hint="Webhook Key"
+                app:endIconMode="password_toggle"
+                app:helperTextEnabled="true"
+                app:helperText="留空则不修改被控端已保存值"
+                android:visibility="gone">
 
-        <!-- 企业微信（仅选中「企业微信」时显示） -->
-        <TextView
-            android:id="@+id/tvGroupWx"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
-            android:text="企业微信"
-            android:textColor="@color/md_onSurfaceVariant"
-            android:textSize="12sp"
-            android:visibility="gone" />
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/etWxKey"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="textPassword"
+                    android:maxLines="1" />
+            </com.google.android.material.textfield.TextInputLayout>
 
-        <com.google.android.material.textfield.TextInputLayout
-            android:id="@+id/tilWxKey"
-            style="@style/Widget.DC.TextInput.Outlined"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:hint="Webhook Key"
-            app:endIconMode="password_toggle"
-            app:helperTextEnabled="true"
-            app:helperText="留空则不修改被控端已保存值"
-            android:visibility="gone">
-
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/etWxKey"
+            <TextView
+                android:id="@+id/tvGroupEmail"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:inputType="textPassword"
-                android:maxLines="1" />
-        </com.google.android.material.textfield.TextInputLayout>
+                android:layout_marginTop="14dp"
+                android:text="邮件"
+                android:textColor="@color/md_onSurfaceVariant"
+                android:textSize="12sp"
+                android:visibility="gone" />
 
-        <!-- 邮件（仅选中「邮件」时显示） -->
-        <TextView
-            android:id="@+id/tvGroupEmail"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
-            android:text="邮件"
-            android:textColor="@color/md_onSurfaceVariant"
-            android:textSize="12sp"
-            android:visibility="gone" />
-
-        <com.google.android.material.textfield.TextInputLayout
-            android:id="@+id/tilOutbox"
-            style="@style/Widget.DC.TextInput.Outlined"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:hint="发件箱"
-            app:helperTextEnabled="true"
-            app:helperText="QQ 号将自动补全 @qq.com"
-            android:visibility="gone">
-
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/etOutbox"
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/tilOutbox"
+                style="@style/Widget.DC.TextInput.Outlined"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:inputType="textEmailAddress"
-                android:maxLines="1" />
-        </com.google.android.material.textfield.TextInputLayout>
+                android:layout_marginTop="4dp"
+                android:hint="发件箱"
+                app:helperTextEnabled="true"
+                app:helperText="QQ 号将自动补全 @qq.com"
+                android:visibility="gone">
 
-        <com.google.android.material.textfield.TextInputLayout
-            android:id="@+id/tilAuth"
-            style="@style/Widget.DC.TextInput.Outlined"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:hint="授权码"
-            app:endIconMode="password_toggle"
-            app:helperTextEnabled="true"
-            app:helperText="留空则不修改被控端已保存值"
-            android:visibility="gone">
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/etOutbox"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="textEmailAddress"
+                    android:maxLines="1" />
+            </com.google.android.material.textfield.TextInputLayout>
 
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/etAuth"
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/tilAuth"
+                style="@style/Widget.DC.TextInput.Outlined"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:inputType="textPassword"
-                android:maxLines="1" />
-        </com.google.android.material.textfield.TextInputLayout>
+                android:layout_marginTop="10dp"
+                android:hint="授权码"
+                app:endIconMode="password_toggle"
+                app:helperTextEnabled="true"
+                app:helperText="留空则不修改被控端已保存值"
+                android:visibility="gone">
 
-        <com.google.android.material.textfield.TextInputLayout
-            android:id="@+id/tilInbox"
-            style="@style/Widget.DC.TextInput.Outlined"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:hint="收件箱"
-            app:helperTextEnabled="true"
-            app:helperText="用于接收打卡结果回执邮件"
-            android:visibility="gone">
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/etAuth"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="textPassword"
+                    android:maxLines="1" />
+            </com.google.android.material.textfield.TextInputLayout>
 
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/etInbox"
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/tilInbox"
+                style="@style/Widget.DC.TextInput.Outlined"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:inputType="textEmailAddress"
-                android:maxLines="1" />
-        </com.google.android.material.textfield.TextInputLayout>
+                android:layout_marginTop="10dp"
+                android:hint="收件箱"
+                app:helperTextEnabled="true"
+                app:helperText="用于接收打卡结果回执邮件"
+                android:visibility="gone">
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:text="敏感字段留空表示不修改被控端已保存的值。"
-            android:textColor="@color/md_onSurfaceVariant"
-            android:textSize="11sp" />
-    </LinearLayout>
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/etInbox"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="textEmailAddress"
+                    android:maxLines="1" />
+            </com.google.android.material.textfield.TextInputLayout>
 
-</androidx.core.widget.NestedScrollView>
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="敏感字段留空表示不修改被控端已保存的值。"
+                android:textColor="@color/md_onSurfaceVariant"
+                android:textSize="11sp" />
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
+
+</LinearLayout>

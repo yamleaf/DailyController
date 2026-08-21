@@ -4,18 +4,16 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:paddingHorizontal="8dp"
-    android:paddingTop="4dp">
+    android:paddingHorizontal="20dp"
+    android:paddingTop="16dp">
 
     <com.google.android.material.textfield.TextInputLayout
-        style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+        style="@style/Widget.Daily.TextInput.Outlined"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:hint="输入设备备注名"
-        app:boxCornerRadiusBottomEnd="12dp"
-        app:boxCornerRadiusBottomStart="12dp"
-        app:boxCornerRadiusTopEnd="12dp"
-        app:boxCornerRadiusTopStart="12dp">
+        app:startIconDrawable="@drawable/ic_dialog_info"
+        app:startIconTint="@color/md_primary">
 
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/etName"
@@ -26,15 +24,13 @@
     </com.google.android.material.textfield.TextInputLayout>
 
     <com.google.android.material.textfield.TextInputLayout
-        style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+        style="@style/Widget.Daily.TextInput.Outlined"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="10dp"
         android:hint="分组（可选，留空 = 未分组）"
-        app:boxCornerRadiusBottomEnd="12dp"
-        app:boxCornerRadiusBottomStart="12dp"
-        app:boxCornerRadiusTopEnd="12dp"
-        app:boxCornerRadiusTopStart="12dp">
+        app:startIconDrawable="@drawable/ic_dialog_info"
+        app:startIconTint="@color/md_primary">
 
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/etGroup"

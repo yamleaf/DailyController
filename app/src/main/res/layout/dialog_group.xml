@@ -1,23 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
-<com.google.android.material.textfield.TextInputLayout
-    xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:hint="分组名称"
-    android:paddingHorizontal="8dp"
-    android:paddingTop="4dp"
-    app:boxCornerRadiusBottomEnd="12dp"
-    app:boxCornerRadiusBottomStart="12dp"
-    app:boxCornerRadiusTopEnd="12dp"
-    app:boxCornerRadiusTopStart="12dp">
+    android:orientation="vertical"
+    android:paddingHorizontal="20dp"
+    android:paddingTop="16dp">
 
-    <com.google.android.material.textfield.TextInputEditText
-        android:id="@+id/etGroupName"
+    <com.google.android.material.textfield.TextInputLayout
+        style="@style/Widget.Daily.TextInput.Outlined"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:inputType="text"
-        android:maxLines="1" />
+        android:hint="分组名称"
+        app:startIconDrawable="@drawable/ic_dialog_info"
+        app:startIconTint="@color/md_primary"
+        app:helperText="用于对设备分组管理"
+        app:helperTextEnabled="true">
 
-</com.google.android.material.textfield.TextInputLayout>
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/etGroupName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="text"
+            android:maxLines="1" />
+    </com.google.android.material.textfield.TextInputLayout>
+
+</LinearLayout>

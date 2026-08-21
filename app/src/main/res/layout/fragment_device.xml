@@ -5,6 +5,7 @@
     android:layout_height="match_parent"
     android:background="@color/md_background"
     android:fillViewport="true"
+    android:clipToPadding="false"
     android:paddingStart="16dp"
     android:paddingEnd="16dp"
     android:paddingTop="12dp"

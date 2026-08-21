@@ -4,13 +4,12 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:paddingHorizontal="8dp"
-    android:paddingTop="4dp">
+    android:paddingHorizontal="20dp"
+    android:paddingTop="16dp">
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginStart="4dp"
         android:text="打卡时间"
         android:textAppearance="@style/TextAppearance.Material3.LabelMedium"
         android:textColor="@color/md_onSurfaceVariant" />
@@ -52,15 +51,13 @@
     </LinearLayout>
 
     <com.google.android.material.textfield.TextInputLayout
-        style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+        style="@style/Widget.Daily.TextInput.Outlined"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
+        android:layout_marginTop="12dp"
         android:hint="任务名称（可选，如：早打卡）"
-        app:boxCornerRadiusBottomEnd="12dp"
-        app:boxCornerRadiusBottomStart="12dp"
-        app:boxCornerRadiusTopEnd="12dp"
-        app:boxCornerRadiusTopStart="12dp">
+        app:startIconDrawable="@drawable/ic_dialog_info"
+        app:startIconTint="@color/md_primary">
 
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/etTaskName"

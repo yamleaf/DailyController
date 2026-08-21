@@ -6,6 +6,8 @@ import android.content.Intent
 import android.content.res.ColorStateList
 import android.util.Log
 import androidx.transition.TransitionManager
+import android.graphics.Outline
+import android.view.ViewOutlineProvider
 import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
@@ -175,9 +177,11 @@ class DeviceControlActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivityDeviceControlBinding.inflate(layoutInflater)
-        setContentView(binding.root)
-        UiInsets.applyStatusBarPadding(this, binding.appBar)
+binding = ActivityDeviceControlBinding.inflate(layoutInflater)
+          setContentView(binding.root)
+          UiInsets.applyStatusBarPadding(this, binding.appBar)
+
+          // 悬浮导航栏按圆角裁剪（由 bg_nav_floating shape + clipToOutline 处理）
 
         val deviceId = intent.getStringExtra("deviceId")
         if (deviceId.isNullOrBlank()) { finish(); return }
@@ -210,9 +214,18 @@ class DeviceControlActivity : AppCompatActivity() {
         binding.toolbar.setNavigationOnClickListener { finish() }
         binding.toolbar.title = device.name
 
-        initFragments()
-        setupControllerNav()
-        switchTab(TAG_OVERVIEW)
+initFragments()
+          setupControllerNav()
+          switchTab(TAG_OVERVIEW)
+
+          // 磨砂玻璃悬浮导航：模糊其下方的全部内容，clipToOutline 裁剪圆角
+          binding.navBarDc.blurView.post {
+              try {
+                  binding.navBarDc.blurView.setupWith(binding.root)
+                      .setBlurRadius(24f)
+                      .setOverlayColor(android.graphics.Color.TRANSPARENT)
+              } catch (_: Exception) { }
+          }
 
         if (remoteEnabled) {
             setConnStatus("连接中…", false)
@@ -316,42 +329,42 @@ class DeviceControlActivity : AppCompatActivity() {
     }
 
     /** ═══════ 自定义悬浮导航（5 项均等分布，总览为凸出枢纽圆） ═══════ */
-    private fun setupControllerNav() {
-        // 绑定 5 个导航项的点击事件
-        binding.navCalendar.setOnClickListener { switchTab(TAG_CALENDAR) }
-        binding.navTasks.setOnClickListener { switchTab(TAG_TASKS) }
-        binding.navOverview.setOnClickListener { switchTab(TAG_OVERVIEW) }
-        binding.navDevice.setOnClickListener { switchTab(TAG_DEVICE) }
-        binding.navSettings.setOnClickListener { switchTab(TAG_SETTINGS) }
+private fun setupControllerNav() {
+          // 绑定 5 个导航项的点击事件
+          binding.navBarDc.navCalendar.setOnClickListener { switchTab(TAG_CALENDAR) }
+          binding.navBarDc.navTasks.setOnClickListener { switchTab(TAG_TASKS) }
+          binding.navBarDc.navOverview.setOnClickListener { switchTab(TAG_OVERVIEW) }
+          binding.navBarDc.navDevice.setOnClickListener { switchTab(TAG_DEVICE) }
+          binding.navBarDc.navSettings.setOnClickListener { switchTab(TAG_SETTINGS) }
 
-        // 初始选中态
-        updateNavSelection(TAG_OVERVIEW)
-    }
+          // 初始选中态
+          updateNavSelection(TAG_OVERVIEW)
+      }
 
-    /** 更新导航选中态：图标/文字颜色 + 底部指示线（5 项统一处理） */
-    private fun updateNavSelection(activeTag: String) {
-        val activeColor = ContextCompat.getColor(this, R.color.md_primary)
-        val inactiveColor = ContextCompat.getColor(this, R.color.md_onSurfaceVariant)
+      /** 更新导航选中态：图标/文字颜色（同 DT 方式，仅变色无胶囊指示器，§3.12）*/
+      private fun updateNavSelection(activeTag: String) {
+          val activeColor = ContextCompat.getColor(this, R.color.md_primary)
+          val inactiveColor = ContextCompat.getColor(this, R.color.md_onSurfaceVariant)
 
-        // 辅助函数：设置单个项的选中/未选中态
-        fun setItemState(icon: ImageView, label: TextView, line: View, isActive: Boolean) {
-            icon.imageTintList = if (isActive)
-                ColorStateList.valueOf(activeColor) else ColorStateList.valueOf(inactiveColor)
-            label.setTextColor(if (isActive) activeColor else inactiveColor)
-            line.visibility = if (isActive) View.VISIBLE else View.GONE
-        }
+          fun setItemState(icon: ImageView, label: TextView, isActive: Boolean) {
+              icon.imageTintList = if (isActive)
+                  ColorStateList.valueOf(activeColor) else ColorStateList.valueOf(inactiveColor)
+              label.setTextColor(if (isActive) activeColor else inactiveColor)
+          }
 
-        setItemState(binding.iconCalendar, binding.labelCalendar, binding.lineCalendar,
-            activeTag == TAG_CALENDAR)
-        setItemState(binding.iconTasks, binding.labelTasks, binding.lineTasks,
-            activeTag == TAG_TASKS)
-        setItemState(binding.iconOverview, binding.labelOverview, binding.lineOverview,
-            activeTag == TAG_OVERVIEW)
-        setItemState(binding.iconDevice, binding.labelDevice, binding.lineDevice,
-            activeTag == TAG_DEVICE)
-        setItemState(binding.iconSettings, binding.labelSettings, binding.lineSettings,
-            activeTag == TAG_SETTINGS)
-    }
+          setItemState(binding.navBarDc.iconCalendar, binding.navBarDc.labelCalendar, activeTag == TAG_CALENDAR)
+          setItemState(binding.navBarDc.iconTasks, binding.navBarDc.labelTasks, activeTag == TAG_TASKS)
+          setItemState(binding.navBarDc.iconDevice, binding.navBarDc.labelDevice, activeTag == TAG_DEVICE)
+          setItemState(binding.navBarDc.iconSettings, binding.navBarDc.labelSettings, activeTag == TAG_SETTINGS)
+
+        // 总览凸起按钮：激活=紫→蓝渐变圆 + on_header 图标；未激活=白底描边圆 + brand_purple 图标（同 DT）
+        val overviewActive = activeTag == TAG_OVERVIEW
+        binding.navBarDc.navOverview.setBackgroundResource(
+            if (overviewActive) R.drawable.bg_brand_gradient_circle else R.drawable.bg_nav_raised_silent)
+        binding.navBarDc.iconOverview.imageTintList = ColorStateList.valueOf(
+            ContextCompat.getColor(this,
+                if (overviewActive) R.color.on_header else R.color.brand_purple))
+      }
 
     private fun refreshCurrentFragment() {
         val snapshot = currentSnapshot ?: return
@@ -529,7 +542,7 @@ class DeviceControlActivity : AppCompatActivity() {
             val granted = subAck?.grantedQos
             if (granted != null) {
                 for (i in granted.indices) {
-                    if (granted[i].toInt() == 128) {
+                    if (granted[i] == 128) {
                         anyDenied = true
                         if (topics[i] == pushTopic) pushDenied = true
                         Log.w(TAG, "订阅被 broker 拒绝(ACL): ${topics[i]} 账户=${device.ctlUser}")
@@ -1549,7 +1562,7 @@ val calendar = CalendarSnapshot(
         runOnUiThread {
             setConnStatus(
                 "设备离线（无响应）", false,
-                "被控端未响应，可能已经离线/解绑。\n可尝试给被控端发送通知指令（如「DT#状态查询」）触发响应"
+                "被控端未响应，可能已经离线/解绑。\n可尝试给被控端发送通知指令（如「DT#状态查询」）"
             )
             overviewFragment.setActionsEnabled(false)
             Snackbar.make(

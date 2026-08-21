@@ -9,7 +9,8 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:fillViewport="true"
-android:paddingStart="16dp"
+        android:clipToPadding="false"
+        android:paddingStart="16dp"
     android:paddingEnd="16dp"
     android:paddingTop="12dp"
     android:paddingBottom="100dp">
@@ -36,7 +37,7 @@ android:paddingStart="16dp"
             android:layout_height="wrap_content"
             app:cardBackgroundColor="@color/md_surface"
             app:cardCornerRadius="@dimen/radius_xl"
-            app:cardElevation="2dp"
+            app:cardElevation="0dp"
             app:strokeColor="@color/md_outlineVariant"
             app:strokeWidth="1dp">
 
@@ -98,19 +99,11 @@ android:paddingStart="16dp"
                             android:textSize="@dimen/sp_13" />
                     </LinearLayout>
 
-                    <!-- 右侧：状态灯（halo + dot + gloss） -->
+                    <!-- 右侧：状态灯（dot + gloss） -->
                     <FrameLayout
                         android:layout_width="28dp"
                         android:layout_height="28dp"
                         android:layout_marginEnd="@dimen/dp_4">
-
-                        <View
-                            android:id="@+id/dotHalo"
-                            android:layout_width="22dp"
-                            android:layout_height="22dp"
-                            android:layout_gravity="center"
-                            android:alpha="0.3"
-                            android:background="@drawable/bg_dot_offline" />
 
                         <View
                             android:id="@+id/dotStatus"
@@ -182,40 +175,10 @@ android:paddingStart="16dp"
                         android:id="@+id/switchRemote"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:contentDescription="远程控制服务开关" />
-                </LinearLayout>
-
-                <!-- 操作按钮行 -->
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="@dimen/dp_12"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnRefresh"
-                        style="@style/Widget.Material3.Button.TonalButton"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_marginEnd="@dimen/dp_6"
-                        android:layout_weight="1"
-                        android:text="实时刷新"
-                        android:stateListAnimator="@animator/btn_press_scale"
-                        app:icon="@drawable/ic_timer"
-                        app:iconTint="@color/md_primary" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnReconnect"
-                        style="@style/Widget.Material3.Button.TonalButton"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="@dimen/dp_6"
-                        android:layout_weight="1"
-                        android:text="重新配对"
-                        android:stateListAnimator="@animator/btn_press_scale"
-                        app:icon="@drawable/ic_scan"
-                        app:iconTint="@color/md_primary" />
+                        android:contentDescription="远程控制服务开关"
+                        android:thumbTint="@color/switch_thumb_mqtt"
+                        android:trackTint="@color/switch_track_mqtt"
+                        app:useMaterialThemeColors="false" />
                 </LinearLayout>
 
                 <!-- 快照状态提示（由 OverviewFragment 动态控制显隐） -->
@@ -237,7 +200,7 @@ android:paddingStart="16dp"
                 android:layout_marginTop="8dp"
                 app:cardBackgroundColor="@color/md_surface"
                 app:cardCornerRadius="16dp"
-                app:cardElevation="1dp"
+                app:cardElevation="0dp"
                 app:strokeColor="@color/md_outlineVariant"
                 app:strokeWidth="1dp">
 
@@ -338,19 +301,6 @@ android:paddingStart="16dp"
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- D5：未配对时显示「重新配对」入口（配对令牌 2 分钟有效） -->
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnRePair"
-            style="@style/Widget.Material3.Button.TonalButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:text="重新配对（配对令牌 2 分钟内有效）"
-            android:stateListAnimator="@animator/btn_press_scale"
-            android:visibility="gone"
-            app:icon="@drawable/ic_scan"
-            app:iconTint="@color/md_primary" />
-
         <!-- D3：缓存数据可能已过期的灰色细条提示 -->
         <TextView
             android:id="@+id/tvStaleStrip"
@@ -367,16 +317,12 @@ android:paddingStart="16dp"
             android:textSize="12sp"
             android:visibility="gone" />
 
-        <!-- ============ 2. 快捷操作 ============ -->
+        <!-- ============ 2. 快捷操作（2×3 图标网格，v1.2 重构） ============ -->
         <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
-            app:cardBackgroundColor="@color/md_surface"
-            app:cardCornerRadius="22dp"
-            app:cardElevation="2dp"
-            app:strokeColor="@color/md_outlineVariant"
-            app:strokeWidth="1dp">
+            style="@style/Widget.Daily.SectionCard">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -396,120 +342,180 @@ android:paddingStart="16dp"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="2dp"
-                    android:text="远程触发被控端动作（结果经被控端消息渠道回传）"
+                    android:text="远程触发被控端动作"
                     android:textColor="@color/md_onSurfaceVariant"
                     android:textSize="12sp" />
 
-                <LinearLayout
+                <!-- 2×3 图标网格 -->
+                <GridLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="12dp"
-                    android:layout_weight="1"
-                    android:baselineAligned="false"
-                    android:orientation="horizontal">
+                    android:columnCount="3"
+                    android:rowCount="2">
 
-                    <com.google.android.material.button.MaterialButton
+                    <!-- 手动打卡 -->
+                    <LinearLayout
                         android:id="@+id/btnActPunch"
-                        style="@style/Widget.Material3.Button.OutlinedButton"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:layout_marginEnd="6dp"
-                        android:layout_weight="1"
-                        android:text="手动打卡"
-                        android:textColor="@color/md_primary"
-                        android:stateListAnimator="@animator/btn_press_scale"
-                        app:icon="@drawable/ic_device"
-                        app:iconTint="@color/md_primary"
-                        app:strokeColor="@color/md_primary" />
+                        android:layout_columnWeight="1"
+                        android:layout_margin="4dp"
+                        android:gravity="center"
+                        android:orientation="vertical"
+                        android:paddingHorizontal="4dp"
+                        android:paddingTop="14dp"
+                        android:paddingBottom="12dp"
+                        android:background="@drawable/bg_action_tile"
+                        android:backgroundTint="@color/md_primaryContainer"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:foreground="?attr/selectableItemBackground">
+                        <ImageView
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:src="@drawable/ic_edit"
+                            app:tint="@color/md_primary" android:contentDescription="@null" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp" android:text="手动打卡"
+                            android:textSize="11sp" android:textColor="@color/md_onPrimaryContainer" />
+                    </LinearLayout>
 
-                    <com.google.android.material.button.MaterialButton
+                    <!-- 考勤记录 -->
+                    <LinearLayout
                         android:id="@+id/btnActAttendance"
-                        style="@style/Widget.Material3.Button.OutlinedButton"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:layout_marginStart="5dp"
-                        android:layout_weight="1"
-                        android:text="考勤记录"
-                        android:textColor="@color/md_secondary"
-                        android:stateListAnimator="@animator/btn_press_scale"
-                        app:icon="@drawable/ic_scan"
-                        app:iconTint="@color/md_secondary"
-                        app:strokeColor="@color/md_secondary" />
-                </LinearLayout>
+                        android:layout_columnWeight="1"
+                        android:layout_margin="4dp"
+                        android:gravity="center"
+                        android:orientation="vertical"
+                        android:paddingHorizontal="4dp"
+                        android:paddingTop="14dp"
+                        android:paddingBottom="12dp"
+                        android:background="@drawable/bg_action_tile"
+                        android:backgroundTint="@color/md_tertiaryContainer"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:foreground="?attr/selectableItemBackground">
+                        <ImageView
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:src="@drawable/ic_scan"
+                            app:tint="@color/md_tertiary" android:contentDescription="@null" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp" android:text="考勤记录"
+                            android:textSize="11sp" android:textColor="@color/md_onTertiaryContainer" />
+                    </LinearLayout>
 
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:layout_weight="1"
-                    android:baselineAligned="false"
-                    android:orientation="horizontal">
-
-                    <com.google.android.material.button.MaterialButton
+                    <!-- 执行任务 -->
+                    <LinearLayout
                         android:id="@+id/btnActStart"
-                        style="@style/Widget.Material3.Button.OutlinedButton"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:layout_marginEnd="6dp"
-                        android:layout_weight="1"
-                        android:text="执行任务"
-                        android:textColor="@color/md_tertiary"
-                        android:stateListAnimator="@animator/btn_press_scale"
-                        app:icon="@drawable/ic_power"
-                        app:iconTint="@color/md_tertiary"
-                        app:strokeColor="@color/md_tertiary" />
+                        android:layout_columnWeight="1"
+                        android:layout_margin="4dp"
+                        android:gravity="center"
+                        android:orientation="vertical"
+                        android:paddingHorizontal="4dp"
+                        android:paddingTop="14dp"
+                        android:paddingBottom="12dp"
+                        android:background="@drawable/bg_action_tile"
+                        android:backgroundTint="@color/brand_purple_container"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:foreground="?attr/selectableItemBackground">
+                        <ImageView
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:src="@drawable/ic_power"
+                            app:tint="@color/brand_purple" android:contentDescription="@null" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp" android:text="执行任务"
+                            android:textSize="11sp" android:textColor="@color/brand_on_purple_container" />
+                    </LinearLayout>
 
-                    <com.google.android.material.button.MaterialButton
+                    <!-- 终止任务（红色） -->
+                    <LinearLayout
                         android:id="@+id/btnActStop"
-                        style="@style/Widget.Material3.Button.OutlinedButton"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:layout_marginStart="6dp"
-                        android:layout_weight="1"
-                        android:text="终止任务"
-                        android:textColor="@color/md_error"
-                        android:stateListAnimator="@animator/btn_press_scale"
-                        app:icon="@drawable/ic_power_save"
-                        app:iconTint="@color/md_error"
-                        app:strokeColor="@color/md_error" />
-                </LinearLayout>
+                        android:layout_columnWeight="1"
+                        android:layout_margin="4dp"
+                        android:gravity="center"
+                        android:orientation="vertical"
+                        android:paddingHorizontal="4dp"
+                        android:paddingTop="14dp"
+                        android:paddingBottom="12dp"
+                        android:background="@drawable/bg_action_tile"
+                        android:backgroundTint="@color/md_errorContainer"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:foreground="?attr/selectableItemBackground">
+                        <ImageView
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:src="@drawable/ic_close"
+                            app:tint="@color/md_error" android:contentDescription="@null" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp" android:text="终止任务"
+                            android:textSize="11sp" android:textColor="@color/md_onErrorContainer" />
+                    </LinearLayout>
 
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:layout_weight="1"
-                    android:baselineAligned="false"
-                    android:orientation="horizontal">
-
-                    <com.google.android.material.button.MaterialButton
+                    <!-- 开启循环 -->
+                    <LinearLayout
                         android:id="@+id/btnActLoopOn"
-                        style="@style/Widget.Material3.Button.OutlinedButton"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:layout_marginEnd="5dp"
-                        android:layout_weight="1"
-                        android:text="开启循环"
-                        android:textColor="@color/md_teal"
-                        android:stateListAnimator="@animator/btn_press_scale"
-                        app:icon="@drawable/ic_power"
-                        app:iconTint="@color/md_teal"
-                        app:strokeColor="@color/md_teal" />
+                        android:layout_columnWeight="1"
+                        android:layout_margin="4dp"
+                        android:gravity="center"
+                        android:orientation="vertical"
+                        android:paddingHorizontal="4dp"
+                        android:paddingTop="14dp"
+                        android:paddingBottom="12dp"
+                        android:background="@drawable/bg_action_tile"
+                        android:backgroundTint="@color/md_successContainer"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:foreground="?attr/selectableItemBackground">
+                        <ImageView
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:src="@drawable/ic_loop"
+                            app:tint="@color/md_success" android:contentDescription="@null" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp" android:text="开启循环"
+                            android:textSize="11sp" android:textColor="@color/md_onSuccessContainer" />
+                    </LinearLayout>
 
-                    <com.google.android.material.button.MaterialButton
+                    <!-- 关闭循环 -->
+                    <LinearLayout
                         android:id="@+id/btnActLoopOff"
-                        style="@style/Widget.Material3.Button.OutlinedButton"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:layout_marginStart="6dp"
-                        android:layout_weight="1"
-                        android:text="关闭循环"
-                        android:textColor="@color/md_error"
-                        android:stateListAnimator="@animator/btn_press_scale"
-                        app:icon="@drawable/ic_power_save"
-                        app:iconTint="@color/md_error"
-                        app:strokeColor="@color/md_error" />
-                </LinearLayout>
+                        android:layout_columnWeight="1"
+                        android:layout_margin="4dp"
+                        android:gravity="center"
+                        android:orientation="vertical"
+                        android:paddingHorizontal="4dp"
+                        android:paddingTop="14dp"
+                        android:paddingBottom="12dp"
+                        android:background="@drawable/bg_action_tile"
+                        android:backgroundTint="@color/md_errorContainer"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:foreground="?attr/selectableItemBackground">
+                        <ImageView
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:src="@drawable/ic_loop"
+                            app:tint="@color/md_error" android:contentDescription="@null" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp" android:text="关闭循环"
+                            android:textSize="11sp" android:textColor="@color/md_onErrorContainer" />
+                    </LinearLayout>
+                </GridLayout>
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
@@ -661,16 +667,40 @@ android:paddingStart="16dp"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="12dp"
-                    android:orientation="vertical">
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:weightSum="2">
 
-                    <include layout="@layout/row_info" android:id="@+id/rowSchedulerDesc" />
-                    <View style="@style/Divider" />
-                    <include layout="@layout/row_info" android:id="@+id/rowDeviceTime" />
-                    <View style="@style/Divider" />
-                    <include layout="@layout/row_info" android:id="@+id/rowTemperature" />
-                    <View style="@style/Divider" />
-                    <include layout="@layout/row_info" android:id="@+id/rowDisconnect" />
+                    <TextView
+                        android:id="@+id/chipDeviceTime"
+                        style="@style/InfoChip"
+                        android:layout_weight="1"
+                        android:ellipsize="end"
+                        android:text="设备时间 --" />
+
+                    <TextView
+                        android:id="@+id/chipTemperature"
+                        style="@style/InfoChip"
+                        android:layout_weight="1"
+                        android:ellipsize="end"
+                        android:text="电池温度 --" />
                 </LinearLayout>
+
+                <TextView
+                    android:id="@+id/chipScheduleDesc"
+                    style="@style/InfoChip"
+                    android:layout_width="match_parent"
+                    android:layout_marginTop="8dp"
+                    android:ellipsize="end"
+                    android:text="暂无调度描述" />
+
+                <TextView
+                    android:id="@+id/chipDisconnect"
+                    style="@style/InfoChip"
+                    android:layout_width="match_parent"
+                    android:layout_marginTop="8dp"
+                    android:ellipsize="end"
+                    android:text="今日 0 次掉线" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 

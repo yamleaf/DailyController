@@ -3,10 +3,10 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <item
-        android:id="@+id/action_client_manager"
-        android:title="客户端管理"
+        android:id="@+id/action_app_settings"
+        android:title="应用设置"
         app:showAsAction="ifRoom"
-        android:icon="@drawable/ic_server"
+        android:icon="@drawable/daily_ic_settings"
         app:iconTint="@color/on_header" />
 
 </menu>
