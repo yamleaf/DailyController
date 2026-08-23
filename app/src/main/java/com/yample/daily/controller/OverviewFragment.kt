@@ -150,24 +150,41 @@ class OverviewFragment : Fragment(), SnapshotFragment {
     }
 
     fun setSnapshotHint(hint: SnapshotHint) {
+        setSnapshotHint(hint, 0L, 0L)
+    }
+
+    fun setSnapshotHint(hint: SnapshotHint, lastActivityMs: Long, timeoutMs: Long = 0) {
         if (_binding == null) return
-        when (hint) {
-            SnapshotHint.NONE -> binding.tvSnapshotHint.visibility = View.GONE
-            SnapshotHint.WAITING -> {
-                binding.tvSnapshotHint.visibility = View.VISIBLE
-                binding.tvSnapshotHint.text = "正在等待被控端返回快照…"
-                binding.tvSnapshotHint.setTextColor(requireContext().getColor(R.color.md_onSurfaceVariant))
-            }
-            SnapshotHint.FAILED -> {
-                binding.tvSnapshotHint.visibility = View.VISIBLE
-                binding.tvSnapshotHint.text = "未获取到快照：请确认被控端在线且已配对，或点击「刷新实时数据」重试"
-                binding.tvSnapshotHint.setTextColor(requireContext().getColor(R.color.md_error))
-            }
-            SnapshotHint.DISABLED -> {
-                binding.tvSnapshotHint.visibility = View.VISIBLE
+        if (hint == SnapshotHint.NONE || hint == SnapshotHint.DISABLED) {
+            binding.tvSnapshotHint.visibility = if (hint == SnapshotHint.NONE) View.GONE else View.VISIBLE
+            if (hint == SnapshotHint.DISABLED) {
                 binding.tvSnapshotHint.text = "MQTT 连接已关闭：开启后可获取被控端实时状态"
                 binding.tvSnapshotHint.setTextColor(requireContext().getColor(R.color.md_onSurfaceVariant))
             }
+            return
+        }
+        binding.tvSnapshotHint.visibility = View.VISIBLE
+        when (hint) {
+            SnapshotHint.WAITING -> {
+                val ago = if (lastActivityMs > 0) formatLastSeen(lastActivityMs) else null
+                val retrySec = (timeoutMs / 1000).toInt()
+                binding.tvSnapshotHint.text = if (ago != null) {
+                    "正在等待被控端返回快照（上次活跃${ago}），约${retrySec}秒后自动重试…"
+                } else {
+                    "正在等待被控端返回快照…"
+                }
+                binding.tvSnapshotHint.setTextColor(requireContext().getColor(R.color.md_onSurfaceVariant))
+            }
+            SnapshotHint.FAILED -> {
+                val ago = if (lastActivityMs > 0) formatLastSeen(lastActivityMs) else null
+                binding.tvSnapshotHint.text = if (ago != null) {
+                    "被控端未返回快照（上次活跃${ago}），可能是临时网络抖动，可下拉刷新立即重试"
+                } else {
+                    "未获取到快照：请确认被控端在线且已配对，或下拉刷新重试"
+                }
+                binding.tvSnapshotHint.setTextColor(requireContext().getColor(R.color.md_error))
+            }
+            else -> {}
         }
     }
 
@@ -186,7 +203,17 @@ class OverviewFragment : Fragment(), SnapshotFragment {
         applyConnStatus()
     }
 
-/** 状态灯：用球形渐变 + 呼吸脉冲表达连接状态，取代原「已连接（已配对）」式冗长文案 */
+    /** 最后活跃时间格式化 */
+    private fun formatLastSeen(ts: Long): String? {
+        if (ts <= 0L) return null
+        val diff = System.currentTimeMillis() - ts
+        if (diff < 60_000) return "${diff / 1000} 秒前"
+        if (diff < 3_600_000) return "${diff / 60_000} 分钟前"
+        if (diff < 86_400_000) return "${diff / 3_600_000} 小时前"
+        return "${diff / 86_400_000} 天前"
+    }
+
+    /** 状态灯：用球形渐变 + 呼吸脉冲表达连接状态，取代原「已连接（已配对）」式冗长文案 */
     private fun applyConnStatus() {
         if (!isAdded || _binding == null) return
         val ctx = requireContext()
@@ -303,16 +330,21 @@ class OverviewFragment : Fragment(), SnapshotFragment {
         binding.btnAlertsClear.visibility = if (alerts.isEmpty()) View.GONE else View.VISIBLE
         alerts.forEach { alert ->
             val row = RowInfoBinding.inflate(LayoutInflater.from(requireContext()))
-            row.tvRowLabel.text = alert.title
             val timeStr = SimpleDateFormat("MM-dd HH:mm", Locale.CHINA).format(Date(alert.ts))
-            row.tvRowValue.text = if (alert.type == "device_offline") {
-                "$timeStr · 已离线"
-            } else {
-                "$timeStr · ${alert.battery}%"
+            // 时间统一放最左侧（与标题同行），右侧只留状态摘要
+            row.tvRowLabel.text = "$timeStr · ${alert.title}"
+            row.tvRowValue.text = when (alert.type) {
+                "device_offline" -> "已离线"
+                Protocol.ALERT_TYPE_ID_CONFLICT -> "有陌生设备抢用本设备ID"
+                else -> "${alert.battery}%"
             }
+            // 右侧摘要超宽时用跑马灯循环滚动，保证信息完整可见（仅告警行生效，不影响共用布局的其他页面）
+            row.tvRowValue.ellipsize = android.text.TextUtils.TruncateAt.MARQUEE
+            row.tvRowValue.marqueeRepeatLimit = -1
+            row.tvRowValue.isSelected = true
             row.tvRowValue.setTextColor(requireContext().getColor(
                 when (alert.type) {
-                    "battery_smart_alert", "low_battery", "device_offline" -> R.color.md_error
+                    "battery_smart_alert", "low_battery", "device_offline", Protocol.ALERT_TYPE_ID_CONFLICT -> R.color.md_error
                     "battery_full" -> R.color.md_tertiary
                     else -> R.color.md_onSurface
                 }

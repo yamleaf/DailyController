@@ -2,6 +2,7 @@ package com.yample.daily.controller
 
 import android.content.Context
 import com.google.gson.GsonBuilder
+import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.yample.mqttprotocol.MqttPacket
 import com.yample.mqttprotocol.MqttSigner
@@ -37,7 +38,7 @@ object DeviceAlertInbox {
         } catch (_: Exception) {
             return null
         }
-        val record = parse(json, rid) ?: return null
+        val record = parse(json, rid, device.broker) ?: return null
         if (!AlertHistory.add(ctx, device.deviceId, record)) return null
         return record
     }
@@ -52,7 +53,7 @@ object DeviceAlertInbox {
         return expected == packet.sign
     }
 
-    private fun parse(json: String, rid: String): AlertRecord? {
+    private fun parse(json: String, rid: String, broker: String = ""): AlertRecord? {
         val obj = try {
             JsonParser.parseString(json).asJsonObject
         } catch (_: Exception) {
@@ -84,6 +85,24 @@ object DeviceAlertInbox {
                 title = "⚠️ 电量智能预警"
                 "设备电量预计 $predictedTime 降至低电量阈值，请及时充电"
             }
+            Protocol.ALERT_TYPE_ID_CONFLICT -> {
+                // 在位设备代报的异常接入事件；仅提示，不影响本机与在位设备的连接
+                val challenger = obj.get("challenger")?.asString?.takeIf { it.isNotBlank() } ?: "未知设备"
+                title = "⚠️ 设备ID冲突告警"
+                val host = brokerHost(broker)
+                val isPublic = host.contains("emqx.io", ignoreCase = true)
+                if (isPublic) {
+                    // 公共 broker：命名空间共享，ID 撞车可能是陌生人，需防凭据泄露
+                    "你的设备正连着公共 MQTT 服务器（$host），另一台设备（${challenger}…）也在用相同的设备ID登录该服务器，已被你的设备拒绝。\n\n" +
+                        "公共服务器上所有人都能看到彼此的客户端ID，设备ID撞车很常见。但对方能连上说明它还知道你的用户名/密码或主题规则，存在被人控制你设备的风险。\n\n" +
+                        "建议立即处理：\n1. 在被控端修改一个别人猜不到的设备ID\n2. 更换 MQTT 用户名和密码\n3. 有条件的话换成自建/私有 MQTT 服务器"
+                } else {
+                    // 自建 broker：命名空间私有，基本是自己两台设备配了相同 ID
+                    "你自建的 MQTT 服务器（$host）上出现了两台设备ID完全相同的设备：另一台（${challenger}…）正在尝试以相同ID登录。\n\n" +
+                        "自建服务器只有你自己能用，这几乎可以肯定是：你有两台设备被设置成了同一个设备ID（比如克隆系统、恢复备份、或手动配置时填重复了）。\n\n" +
+                        "两台同ID设备会互相顶替上线，导致指令错发、状态混乱。建议检查所有设备的ID设置，改成各不相同的ID。"
+                }
+            }
             else -> {
                 title = "收到被控端告警"
                 "告警类型：$type"
@@ -100,5 +119,25 @@ object DeviceAlertInbox {
             predictedTime = predictedTime,
             rid = rid
         )
+    }
+
+    /** 从 "tcp://host:port" / "host:port" 形式的 broker 串中提取主机名 */
+    private fun brokerHost(broker: String): String =
+        broker.trim().substringAfter("://").substringBefore(':').ifBlank { "未知服务器" }
+
+    /**
+     * AQ 告警回放入库：把回放条目 {aid, occurredAt, alert} 转成历史记录写入 [AlertHistory]，
+     * rid=aid 幂等去重，时间戳用被控端原始发生时刻。
+     * @return 新写入的记录；格式非法 / 已存在 / 载荷为空时返回 null
+     */
+    fun acceptReplayed(ctx: Context, device: DeviceRecord, entry: JsonObject?): AlertRecord? {
+        if (entry == null) return null
+        val aid = entry.get("aid")?.asString.orEmpty()
+        if (aid.isBlank()) return null
+        val body = entry.getAsJsonObject("alert") ?: return null
+        val base = parse(body.toString(), aid, device.broker) ?: return null
+        val occurredAt = entry.get("occurredAt")?.asLong ?: 0L
+        val record = if (occurredAt > 0) base.copy(ts = occurredAt) else base
+        return if (AlertHistory.add(ctx, device.deviceId, record)) record else null
     }
 }

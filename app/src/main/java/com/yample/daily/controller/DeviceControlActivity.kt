@@ -81,8 +81,9 @@ class DeviceControlActivity : AppCompatActivity() {
     private var pendingPairRid: String? = null
     /** 入站 rid 去重（resp/push/alert/ack/status），防公共 Broker 重放 */
     private val recentInboundRids = ArrayDeque<String>(64)
-    // 首次进入详情页的 2s 探活：单条 snapshot 查询的超时。配合 1 次重试，最坏 4s 内判定离线。
-    private val QUERY_TIMEOUT_MS = 2_000L
+    // 首次进入详情页的探活：单条 snapshot 查询超时 3s；首次探活额外多一次重试（共 3×3=9s），
+    // 避免公共 broker/被控端冷启动时误判离线、随后 resp 迟到又报「恢复响应」。
+    private val QUERY_TIMEOUT_MS = 3_000L
     private val queryTimeoutRunnable = Runnable { onQueryTimeout() }
     /** D2：动作下发兜底恢复（ACK 丢失时 10s 后自动解灰） */
     private val actionBusyResetRunnable = Runnable {
@@ -92,8 +93,24 @@ class DeviceControlActivity : AppCompatActivity() {
     }
     private var queryPendingRid: String? = null
     private var queryRetryCount = 0
-    /** 首次探活允许的重试次数：1 → 共 2 次尝试，两次都超时即判定离线 */
+    /** 普通查询允许的重试次数：1 → 共 2 次尝试 */
     private val QUERY_MAX_RETRIES = 1
+    /** 首次进入探活允许的重试次数：2 → 共 3 次尝试，全部超时才判定离线（抗慢链路误判） */
+    private val QUERY_PROBE_MAX_RETRIES = 2
+
+    /** 查询节流：窗口内重复触发合并为一次；force=true 豁免（仅探活语义使用） */
+    private val QUERY_MIN_INTERVAL_MS = 5_000L
+    private var lastQueryAttemptTs = 0L
+
+    /** 被控端最后活跃时间戳（收到其任意消息时更新），用于超时提示区分「真离线」vs「临时抖动」 */
+    private var lastActivityMs = 0L
+
+    // ===================== AQ 告警回放 =====================
+    /** 首次进入详情页拉一次被控端近期告警回放：补齐本端离线期间漏收的告警（rid=aid 幂等去重） */
+    private var alertQueryPendingRid: String? = null
+    /** 回放查询超时（静默失败：不打扰用户，下次进入页面再试） */
+    private val ALERT_QUERY_TIMEOUT_MS = 4_000L
+    private val alertQueryTimeoutRunnable = Runnable { alertQueryPendingRid = null }
 
     // ===================== 首次进入探活 =====================
     /**
@@ -423,23 +440,14 @@ private fun setupControllerNav() {
                     // 每次连接/重连都重新订阅全部主题；订阅是幂等的。
                     // 关键顺序：先订阅（subscribeTopics 同步等 SUBACK 返回）→ 完成后再首次探活。
                     // 若并行发 QUERY，被控端 resp 到达时订阅未建立会被 broker 丢弃，
-                    // 首次探活 2s×2 超时 → 误判离线（表现为「先进设备页报离线、随后又报恢复响应」）。
+                    // 首次探活超时 → 误判离线（表现为「先进设备页报离线、随后又报恢复响应」）。
                     lifecycleScope.launch(Dispatchers.IO) {
                         subscribeTopics()
-                        // 复位首次探活标志：Paho 自动重连（isAutomaticReconnect）不经过 disconnectMqtt
-                        // （只有那里会复位 firstEntryProbeStarted）。若不复位，重连后 startFirstEntryProbe
-                        // 会因 firstEntryProbeStarted=true 直接 return —— 只把色灯置成「探活中…」(琥珀)
-                        // 却永远不再发探活，色灯卡在黄色直到手动刷新/收到推送（本工作区已移除 15s 周期刷新，
-                        // 没有自动兜底）。复位后每次（重）连都重新探活：被控端在线 → 快照确认转绿；
-                        // 离线 → 两次失败转红，不再卡死。首次连接时 connectComplete 与下方初始分支都会触发，
-                        // 由 sendQuery 的 queryPendingRid 并发守护去重。
-                        firstEntryProbeStarted = false
-                        // 首次进入详情页：仅此时主动拉一次快照（5s 探活 + 重试 → 离线判定）。
-                        // 不再周期刷新，其余刷新只来自手动刷新 / 被控端推送。
-                        // 注意：此处不再无条件 setConnStatus("探活中…") —— 琥珀态统一由
-                        // startFirstEntryProbe 在真正发出探活时设置。否则 connectComplete 与
-                        // connect() 返回分支都会置「探活中…」，后到者会把已经确认成功的绿灯覆盖成黄、
-                        // 而它的 startFirstEntryProbe 又因标志位直接 return，结果就是「灰→黄→绿→黄(卡死)」。
+                        // 仅真重连时复位探活标志：首次连接由 connect() 返回分支负责，
+                        // 无条件复位会二次触发探活并打乱在途的重试计数
+                        if (reconnect) firstEntryProbeStarted = false
+                        // 首次进入详情页：仅此时主动拉一次快照；琥珀「探活中」统一由
+                        // startFirstEntryProbe 在真正发出探活时设置，避免后到者把绿灯覆盖成黄
                         startFirstEntryProbe()
                     }
                 }
@@ -675,8 +683,7 @@ private fun setupControllerNav() {
     }
 
     private fun handleIncoming(topic: String, payload: String, retained: Boolean = false) {
-        // 被控端发来任何消息 → 若此前已被判定离线（首次探活两次失败），立即恢复在线态。
-        // 依赖「消息到达」而非定时探测，避免后台轮询拉高待机功耗。
+        lastActivityMs = System.currentTimeMillis()
         if (recentlyMarkedOffline) {
             runOnUiThread { recoverFromFalseOffline() }
         }
@@ -1054,7 +1061,8 @@ private fun setupControllerNav() {
     }
 
     // ===================== 查询快照 =====================
-    fun sendQuery() {
+    /** 发送全量快照查询：默认节流合并高频触发；force=true 豁免（探活语义） */
+    fun sendQuery(force: Boolean = false) {
         if (!remoteEnabled) return
         if (device.sessionSecret.isBlank()) {
             // 尚未配对：把“刷新”当作重新发起配对，自愈（被控端令牌在 TTL 内可重复扫码重试）。
@@ -1065,7 +1073,13 @@ private fun setupControllerNav() {
         }
         if (mqttClient?.isConnected != true) return
         if (queryPendingRid != null) return // 已有待返回查询，避免并发
-        val ts = System.currentTimeMillis()
+        val now = System.currentTimeMillis()
+        if (!force && now - lastQueryAttemptTs < QUERY_MIN_INTERVAL_MS) {
+            Log.d(TAG, "sendQuery 节流跳过（${now - lastQueryAttemptTs}ms < ${QUERY_MIN_INTERVAL_MS}ms）")
+            return
+        }
+        lastQueryAttemptTs = now
+        val ts = now
         val rid = UUID.randomUUID().toString()
         queryPendingRid = rid
         lastQuerySentTs = ts
@@ -1098,26 +1112,32 @@ private fun setupControllerNav() {
     private fun onQueryTimeout() {
         if (queryPendingRid == null) return
         Log.d(TAG, "onQueryTimeout rid=$queryPendingRid retry=$queryRetryCount")
-        if (queryRetryCount < QUERY_MAX_RETRIES) {
+        // 首次进入探活窗口内允许更多次重试（3s×3），避免公共 broker/被控端冷启动时误判离线
+        val maxRetries = if (firstEntryProbeActive) QUERY_PROBE_MAX_RETRIES else QUERY_MAX_RETRIES
+        if (queryRetryCount < maxRetries) {
             queryRetryCount++
-            // 重试前必须清空上一次挂起的 rid，否则 sendQuery 内的并发守护会直接 return，
-            // 导致后续所有查询（含本重试、手动/推送刷新）永久失效、快照再也回不来。
             queryPendingRid = null
-            // 重试过程不再弹 Toast，减少干扰；只在总览页显示等待提示
-            overviewFragment.setSnapshotHint(SnapshotHint.WAITING)
-            sendQuery()
+            overviewFragment.setSnapshotHint(SnapshotHint.WAITING, lastActivityMs, QUERY_TIMEOUT_MS)
+            sendQuery(force = true)
         } else {
             queryPendingRid = null
-            // 仅「首次进入探活」窗口内的两次失败才判定为离线；其余（手动/推送刷新）失败仅提示。
             val wasFirstEntry = firstEntryProbeActive
             queryRetryCount = 0
             firstEntryProbeActive = false
-            overviewFragment.setSnapshotHint(SnapshotHint.FAILED)
+            overviewFragment.setSnapshotHint(SnapshotHint.FAILED, lastActivityMs)
             if (wasFirstEntry) {
                 Log.w(TAG, "首次探活两次失败 → 判定被控端离线")
                 markControlledOffline()
             } else {
-                runOnUiThread { toastOnce("no_snapshot", "被控端未返回快照，请确认被控端在线且已配对") }
+                runOnUiThread {
+                    val msg = if (lastActivityMs > 0) {
+                        val ago = formatLastSeen(lastActivityMs)
+                        "被控端未返回快照（最近活跃$ago），请确认被控端在线且已配对，可点击「刷新实时数据」立即重试"
+                    } else {
+                        "被控端未返回快照，请确认被控端在线且已配对"
+                    }
+                    toastOnce("no_snapshot", msg)
+                }
             }
         }
     }
@@ -1125,6 +1145,11 @@ private fun setupControllerNav() {
     private fun onSnapshot(payload: String) {
         try {
             val packet = gson.fromJson(payload, MqttPacket::class.java) ?: return
+            // AQ 告警回放与快照共用 /resp 主题：按 f 字段分流，互不占用对方的 pending/探活状态
+            if (packet.f == "alerts") {
+                handleAlertReplay(packet)
+                return
+            }
             Log.d(TAG, "onSnapshot 收到 resp rid=${packet.rid} pending=$queryPendingRid")
             if (packet.rid == queryPendingRid) {
                 queryPendingRid = null
@@ -1166,6 +1191,59 @@ private fun setupControllerNav() {
         } catch (e: Exception) {
             e.printStackTrace()
             runOnUiThread { Toast.makeText(this, "快照解析失败：${e.message}", Toast.LENGTH_LONG).show() }
+        }
+    }
+
+    /** 发送 AQ 告警回放查询（首进页面随探活一起发出）；静默失败，下次进入自然重试 */
+    private fun sendAlertQuery() {
+        if (!remoteEnabled || device.sessionSecret.isBlank()) return
+        if (mqttClient?.isConnected != true) return
+        if (alertQueryPendingRid != null) return
+        val ts = System.currentTimeMillis()
+        val rid = UUID.randomUUID().toString()
+        alertQueryPendingRid = rid
+        mainHandler.postDelayed(alertQueryTimeoutRunnable, ALERT_QUERY_TIMEOUT_MS)
+        val sign = MqttSigner.sign(device.sessionSecret, device.deviceId, ts, rid, "alerts", "", "", Protocol.CMD_ALERT_QUERY)
+        val packet = MqttPacket(
+            c = Protocol.CMD_ALERT_QUERY, f = "alerts", v = null, rid = rid, ts = ts, sign = sign
+        )
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                mqttClient?.publish("${MqttPacket.TOPIC_PREFIX}/${device.deviceId}/cmd",
+                    MqttMessage(gson.toJson(packet).toByteArray()).apply { qos = 1 })
+                bumpQuota(1, 0)
+                Log.d(TAG, "sendAlertQuery 发布AQ rid=$rid deviceId=${device.deviceId}")
+            } catch (e: MqttException) {
+                e.printStackTrace()
+                alertQueryPendingRid = null
+            }
+        }
+    }
+
+    /** AQ 回放处理：验签 → 解密 → 逐条入库（aid 幂等去重）；静默合并，不弹窗 */
+    private fun handleAlertReplay(packet: MqttPacket) {
+        try {
+            Log.d(TAG, "handleAlertReplay 收到回放 rid=${packet.rid} pending=$alertQueryPendingRid")
+            if (packet.rid == alertQueryPendingRid) {
+                alertQueryPendingRid = null
+                mainHandler.removeCallbacks(alertQueryTimeoutRunnable)
+            }
+            if (!verifyResp(packet)) return // verifyResp 按 packet.f 动态参与签名，alerts 字段天然兼容
+            if (!acceptInboundRid(packet.rid, packet.ts)) return
+            val wire = packet.v?.toStringValue() ?: return
+            val json = SecretBox.open(device.sessionSecret, wire)
+            val arr = JsonParser.parseString(json).asJsonArray
+            var added = 0
+            for (e in arr) {
+                if (!e.isJsonObject) continue
+                if (DeviceAlertInbox.acceptReplayed(this, device, e.asJsonObject) != null) added++
+            }
+            Log.d(TAG, "AQ 告警回放入库 $added/${arr.size()} 条")
+            if (added > 0) {
+                runOnUiThread { overviewFragment.refreshAlerts(AlertHistory.load(this, device.deviceId)) }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
@@ -1530,10 +1608,8 @@ val calendar = CalendarSnapshot(
 
     // ===================== 首次进入探活（快照拉取 + 离线判定） =====================
     /**
-     * 控制端「首次进入设备详情页」且设备已配对时才主动拉一次快照：
-     * 以一条 snapshot 查询作为 2s 探活 —— 被控端在 2s 内回响应即证明在线，同时带回快照；
-     * 超时则重试一次；两次都失败 → 判定离线（色灯变红 + 提示重新连接）。
-     * 整个 Activity 生命周期只主动拉这一次全量；其余刷新只来自手动刷新 / 被控端推送。
+     * 首次进入详情页且已配对时主动拉一次快照：以 snapshot 查询作探活，
+     * 超时按重试上限多次重试，全部失败才判定离线。整个生命周期只主动拉这一次全量。
      */
     private fun startFirstEntryProbe() {
         if (!remoteEnabled || device.sessionSecret.isBlank() || !device.bound) return
@@ -1541,13 +1617,17 @@ val calendar = CalendarSnapshot(
         firstEntryProbeStarted = true
         firstEntryProbeActive = true
         queryRetryCount = 0
-        Log.d(TAG, "首次进入：发起 5s 探活 + 快照拉取（deviceId=${device.deviceId}）")
+        Log.d(TAG, "首次进入：发起探活 + 快照拉取（3s×3，deviceId=${device.deviceId}）")
         // 只有本次真正发出探活才置「探活中」(琥珀)。connectComplete 与 connect() 返回分支
         // 都会调到这，若在上层无条件置琥珀，后到者会把已确认成功的绿灯覆盖成黄、且此处因
         // firstEntryProbeStarted=true 直接 return 不再发探活 → 色灯卡黄。集中在探活真正发起点设置。
         runOnUiThread { setConnStatus("探活中…", false) }
         runOnUiThread { overviewFragment.setProbing(true) }
-        sendQuery()
+        // 首次进入探活是「必须真正发出」的查询，豁免节流（force）
+        sendQuery(force = true)
+        // 同时拉一次近期告警回放（AQ）：补齐本端离线期间漏收的告警。
+        // 静默进行：失败不提示，回放条目按 aid 幂等去重，重复进入页面重复拉取也无副作用。
+        sendAlertQuery()
     }
 
     /**
@@ -1559,6 +1639,12 @@ val calendar = CalendarSnapshot(
     private fun markControlledOffline() {
         if (recentlyMarkedOffline) return
         recentlyMarkedOffline = true
+        val lastSeenText = if (lastActivityMs > 0) formatLastSeen(lastActivityMs) else "未知"
+        val snackbarMsg = if (lastActivityMs > 0) {
+            "被控端无响应（最近活跃$lastSeenText，可能临时离线），已重试 ${QUERY_PROBE_MAX_RETRIES + 1} 次均未成功，点击「重新连接」手动重试"
+        } else {
+            "被控端无响应（疑似离线），点击「重新连接」重新连接"
+        }
         runOnUiThread {
             setConnStatus(
                 "设备离线（无响应）", false,
@@ -1567,7 +1653,7 @@ val calendar = CalendarSnapshot(
             overviewFragment.setActionsEnabled(false)
             Snackbar.make(
                 binding.root,
-                "被控端无响应（疑似离线），请确认设备状态后重新连接",
+                snackbarMsg,
                 Snackbar.LENGTH_LONG
             ).setAction("重新连接") {
                 overviewFragment.setRefreshing(false)
@@ -1840,5 +1926,13 @@ val calendar = CalendarSnapshot(
         mainHandler.removeCallbacks(PAIR_TIMEOUT_RUNNABLE)
         mainHandler.removeCallbacks(queryTimeoutRunnable)
         try { mqttClient?.disconnect(); mqttClient?.close() } catch (_: Exception) {}
+    }
+
+    private fun formatLastSeen(ts: Long): String {
+        val diff = System.currentTimeMillis() - ts
+        if (diff < 60_000) return "${diff / 1000} 秒前"
+        if (diff < 3_600_000) return "${diff / 60_000} 分钟前"
+        if (diff < 86_400_000) return "${diff / 3_600_000} 小时前"
+        return "${diff / 86_400_000} 天前"
     }
 }

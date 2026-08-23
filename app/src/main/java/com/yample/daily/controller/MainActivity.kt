@@ -3,6 +3,7 @@ package com.yample.daily.controller
 import android.content.ClipboardManager
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -47,6 +48,8 @@ class MainActivity : AppCompatActivity() {
     private var selectedGroup: String = ""
     /** 搜索关键词（空 = 不按关键词过滤） */
     private var searchQuery: String = ""
+    private val TAG = "MainActivity"
+
     /** 当前适配器引用，供在线探测回填（过滤重建后仍指向最新实例） */
     private var currentAdapter: DeviceAdapter? = null
     /** Gson 实例，用于把解绑包序列化为 MQTT 载荷 */
@@ -90,6 +93,9 @@ class MainActivity : AppCompatActivity() {
         binding.rvDevices.layoutManager = LinearLayoutManager(this)
 
         binding.fabAdd.setOnClickListener { showAddChooser() }
+
+        // 处理分享过来的配对信息（ACTION_SEND，跨应用绕过剪贴板限制）
+        handleSendTextIntent(intent)
 
         // 设备列表下拉刷新：重新读库 + 重新探测在线状态
         binding.swipeRefresh.setOnRefreshListener { loadDevices() }
@@ -162,6 +168,7 @@ class MainActivity : AppCompatActivity() {
         if (intent.getBooleanExtra("trigger_add_device", false)) {
             showAddChooser()
         }
+        handleSendTextIntent(intent)
     }
 
     /** 现代化底部弹窗：扫码添加（直接调起扫码，不二次选择）/ 从剪贴板导入（两种方式供用户选） */
@@ -192,18 +199,46 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "剪贴板为空，请先在被控端「远程控制」页点「生成绑定二维码」（会自动复制到剪贴板）", Toast.LENGTH_LONG).show()
                 return
             }
+            Log.d(TAG, "importFromClipboard: $text")
             try {
-                val payload = Gson().fromJson(text, BindingPayload::class.java)
+                val payload = gson.fromJson(text, BindingPayload::class.java)
                 if (payload != null && payload.broker.isNotBlank() && payload.deviceId.isNotBlank()) {
+                    Log.d(TAG, "解析成功: broker=${payload.broker} deviceId=${payload.deviceId}")
                     addDevice(payload, navigate = true)
                 } else {
+                    Log.w(TAG, "解析结果字段为空: payload=$payload broker=${payload?.broker} deviceId=${payload?.deviceId}")
                     Toast.makeText(this, "剪贴板内容缺少必要字段（broker/deviceId）", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
+                Log.e(TAG, "JSON解析失败: ${e.message}", e)
                 Toast.makeText(this, "剪贴板内容不是有效的配对信息", Toast.LENGTH_SHORT).show()
             }
         } catch (e: Exception) {
+            Log.e(TAG, "读取剪贴板失败: ${e.message}", e)
             Toast.makeText(this, "读取剪贴板失败：${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /** 处理系统分享面板传递过来的配对信息（ACTION_SEND text/plain），
+     *  绕开 Android 10+ 跨应用剪贴板读取限制 */
+    private fun handleSendTextIntent(intent: Intent) {
+        if (Intent.ACTION_SEND != intent.action) return
+        if ("text/plain" != intent.type) return
+        val text = intent.getStringExtra(Intent.EXTRA_TEXT)
+        if (text.isNullOrBlank()) return
+        Log.d(TAG, "handleSendTextIntent: $text")
+        try {
+            val payload = gson.fromJson(text, BindingPayload::class.java)
+            if (payload != null && payload.broker.isNotBlank() && payload.deviceId.isNotBlank()) {
+                Log.d(TAG, "解析成功: broker=${payload.broker} deviceId=${payload.deviceId}")
+                addDevice(payload, navigate = true)
+            } else {
+                Log.w(TAG, "分享内容缺少必要字段: payload=$payload")
+                Toast.makeText(this, "分享内容缺少必要字段（broker/deviceId）", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "分享内容解析失败: ${e.message}", e)
+            Toast.makeText(this, "分享内容不是有效的配对信息", Toast.LENGTH_SHORT).show()
         }
     }
 
