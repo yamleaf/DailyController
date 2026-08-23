@@ -495,7 +495,7 @@ class OverviewFragment : Fragment(), SnapshotFragment {
 
         // 任务调度描述 / 设备时间 / 电池温度 / 掉线统计（小长条样式，与上方状态条一致）
         setChip(binding.chipScheduleDesc, s.runtime["schedulerDesc"] ?: "暂无调度描述", false)
-        setChip(binding.chipDeviceTime, "设备时间 ${s.runtime["currentTime"] ?: "--"}", false)
+        setChip(binding.chipDeviceTime, "设备时间 ${formatDeviceTime(s.runtime["currentTime"])}", false)
         setChip(binding.chipTemperature, "电池温度 ${s.runtime["temperature"] ?: "--"}", false)
         // 掉线统计（被控端 runtime 上报：所有保活模式统一计数，跨天重置）
         val discCount = s.runtime["mqttDisconnectCount"]?.toIntOrNull() ?: 0
@@ -528,9 +528,24 @@ class OverviewFragment : Fragment(), SnapshotFragment {
         row.tvRowValue.text = value
     }
 
-    /** 运行时长格式化：>=1 小时显示「X时Y分」，否则「Y分」 */
-    private fun formatUptime(minutes: Long): String =
-        if (minutes >= 60) "${minutes / 60}时${minutes % 60}分" else "${minutes}分"
+    /**
+     * 运行时长格式化（chip 半行宽有限，按量级递减精度防截断）：
+     * <1小时「Y分」；<1天「X时Y分」；>=1天「X天Y时」（分钟粒度在天级无意义）
+     */
+    private fun formatUptime(minutes: Long): String = when {
+        minutes >= 1440 -> "${minutes / 1440}天${minutes % 1440 / 60}时"
+        minutes >= 60 -> "${minutes / 60}时${minutes % 60}分"
+        else -> "${minutes}分"
+    }
+
+    /** 设备时间压缩显示：yyyy-MM-dd HH:mm:ss → MM-dd HH:mm（chip 宽度有限，秒级对概览无意义） */
+    private fun formatDeviceTime(raw: String?): String {
+        val v = raw?.takeIf { it.isNotBlank() } ?: return "--"
+        return runCatching {
+            java.time.format.DateTimeFormatter.ofPattern("MM-dd HH:mm")
+                .format(java.time.LocalDateTime.parse(v, java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
+        }.getOrDefault(v)
+    }
 
     private fun setChip(tv: android.widget.TextView, label: String, on: Boolean) {
         tv.text = label
