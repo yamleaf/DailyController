@@ -211,6 +211,13 @@ binding = ActivityDeviceControlBinding.inflate(layoutInflater)
         }
         device = loaded
         remoteEnabled = prefs.getBoolean("remote_enabled_${device.deviceId}", true)
+        // 重新配对载荷落地（扫码/剪贴板/分享导入）：默认自动重开 MQTT 连接开关。
+        // 解绑时会持久化关闭开关，若不在此重开，配对流程永远不会发起（死等配对）；
+        // onPairAccepted 成功后仍会持久化确认一次。
+        if (!device.bound && device.pairingToken.isNotBlank()) {
+            remoteEnabled = true
+            prefs.edit().putBoolean("remote_enabled_${device.deviceId}", true).apply()
+        }
 
         // 加载本地缓存快照：即使 MQTT 尚未连接 / 已关闭，也先展示上次同步的设备数据
         lifecycleScope.launch(Dispatchers.IO) {
@@ -272,9 +279,9 @@ initFragments()
                 sendUpdate(Protocol.FIELD_TASK_AUTO_RECYCLE, PacketValue.BooleanValue(on))
                 Toast.makeText(this@DeviceControlActivity, if (on) "已下发开启循环" else "已下发关闭循环", Toast.LENGTH_SHORT).show()
             }
-            onRePairClick = { retryPair() }
+            onRePairClick = { showRePairSheet() }
             onRetryClick = { retryConnection() }
-            // 「重新配对」按钮（原"重新连接"）：弹添加设备底部弹窗（扫码/剪贴板），更新当前设备配对
+            // 「重新连接」按钮：原"重新连接"语义升级为重配对入口（页内扫码/剪贴板），针对当前设备重新配对
             onReconnectClick = { showRePairSheet() }
             onAlertClick = { record -> showAlertDialog(record) }
             setRemoteEnabled(remoteEnabled)
@@ -300,8 +307,9 @@ initFragments()
             onChannelChange = { v -> sendUpdate(Protocol.FIELD_MSG_CHANNEL, PacketValue.IntValue(v)) }
         }
         deviceFragment = DeviceFragment().apply {
-            // 需求：解绑设备入口移至设备页
+            // 已绑定：解绑设备（下发 UB）；未绑定：删除设备（清本地记录回列表）
             onUnbind = { confirmUnbind() }
+            onDelete = { confirmDeleteDevice() }
         }
 
         supportFragmentManager.beginTransaction()
@@ -828,6 +836,45 @@ private fun setupControllerNav() {
      * 4) 提示用户该设备已解绑，需使用被控端重新配对
      * 重新配对成功后（[onPairAccepted]）恢复正常。
      */
+    /** 解绑态 UI：总览控件禁用 + 显示重配对入口；任务/设置页置灰禁用；设备页切「删除设备」 */
+    private fun applyUnboundUiState() {
+        overviewFragment.setControlsEnabled(false)
+        overviewFragment.setRePairVisible(true)
+        tasksFragment.setCommandsEnabled(false)
+        settingsFragment.setCommandsEnabled(false)
+        deviceFragment.setUnboundState(true)
+    }
+
+    /** 配对成功/已绑定态：恢复全部控件，隐藏重配对入口 */
+    private fun applyBoundUiState() {
+        overviewFragment.setControlsEnabled(true)
+        overviewFragment.setRePairVisible(false)
+        tasksFragment.setCommandsEnabled(true)
+        settingsFragment.setCommandsEnabled(true)
+        deviceFragment.setUnboundState(false)
+    }
+
+    /** 删除设备（仅未绑定态）：清本地记录后返回列表 */
+    private fun confirmDeleteDevice() {
+        UnifiedDialogKit.showConfirm(
+            this,
+            "删除设备",
+            "将从控制端删除该设备的全部本地数据（配对信息/缓存/历史），确定删除？",
+            confirmText = "删除",
+            danger = true,
+            onConfirm = {
+                lifecycleScope.launch(Dispatchers.IO) {
+                    db.deviceDao().deleteById(device.deviceId)
+                    OfflineMonitorService.requestRefresh(this@DeviceControlActivity)
+                    runOnUiThread {
+                        Toast.makeText(this@DeviceControlActivity, "设备已删除", Toast.LENGTH_SHORT).show()
+                        finish()
+                    }
+                }
+            }
+        )
+    }
+
     private fun handleRemoteUnbound(force: Boolean) {
         Log.d(TAG, "收到被控端解绑通知 force=$force，断开 MQTT 并清除本地配对态")
         forceUnbound = force
@@ -839,8 +886,9 @@ private fun setupControllerNav() {
         // 清除配对态：连接信息显示「未配对」，btnRePair 自动显示
         device = device.copy(sessionSecret = "", pairingToken = "", bound = false)
         lifecycleScope.launch(Dispatchers.IO) { db.deviceDao().update(device) }
-        // 禁用所有远程操作控件（刷新 / MQTT 开关 / 下拉刷新 / 快捷动作），仅留「重新配对」可点
-        overviewFragment.setControlsEnabled(false)
+        // 禁用所有远程操作控件（刷新 / MQTT 开关 / 下拉刷新 / 快捷动作），仅留「重新配对」可点；
+        // 任务/设置页同步置灰禁用，设备页切换为「删除设备」
+        applyUnboundUiState()
         overviewFragment.setRemoteEnabled(false)
         // 状态文案 + 解绑横幅（区别于普通离线提示）
         setConnStatus(
@@ -901,8 +949,8 @@ private fun setupControllerNav() {
             prefs.edit().putBoolean("remote_enabled_${device.deviceId}", true).apply()
             remoteEnabled = true
             overviewFragment.setRemoteEnabled(true)
-            // 恢复所有远程操作控件（解绑时被禁用的刷新 / MQTT 开关 / 快捷动作）
-            overviewFragment.setControlsEnabled(true)
+            // 恢复所有远程操作控件（解绑时被禁用的刷新 / MQTT 开关 / 快捷动作 / 任务设置页 / 重配对入口隐藏）
+            applyBoundUiState()
             setConnStatus("已连接（已配对）", true)
             Toast.makeText(this, "已与控制端完成配对", Toast.LENGTH_SHORT).show()
         }
@@ -1180,12 +1228,57 @@ private fun setupControllerNav() {
         }
     }
 
+    /** 考勤数据回传（resp f=attendance）：验签解密后原位刷新等待弹窗内容为考勤列表 */
+    private fun handleAttendanceResp(packet: MqttPacket) {
+        if (!verifyResp(packet)) {
+            runOnUiThread { toastOnce("attendance_sign_fail", "考勤数据验签失败，已忽略") }
+            return
+        }
+        if (!acceptInboundRid(packet.rid, packet.ts)) return
+        val wire = packet.v?.toStringValue() ?: return
+        val json = SecretBox.open(device.sessionSecret, wire)
+        attendanceResultPending = false
+        attendanceTimeoutRunnable?.let { mainHandler.removeCallbacks(it) }
+        attendanceTimeoutRunnable = null
+        runOnUiThread {
+            // 数据已交付：立即恢复快捷按钮（不依赖 ACK 时序，避免关弹窗后仍置灰）
+            overviewFragment.setActionsBusy(false)
+            mainHandler.removeCallbacks(actionBusyResetRunnable)
+            pendingActionRid = null
+            // 原位刷新：等待弹窗内容直接变为考勤列表（弹窗保持，用户手动关闭）
+            val sb = StringBuilder()
+            runCatching {
+                val root = JsonParser.parseString(json).asJsonObject
+                val records = root.getAsJsonArray("records")
+                records?.forEach { e ->
+                    runCatching {
+                        val o = e.asJsonObject
+                        sb.append("· ").append(o.get("msg")?.asString ?: "")
+                            .append("（").append(o.get("time")?.asString ?: "").append("）\n")
+                    }
+                }
+            }
+            attendanceWaitTextView?.apply {
+                text = sb.toString().trim().ifBlank { "今日暂无考勤记录" }
+                textSize = 13f
+                gravity = android.view.Gravity.START
+                setTextColor(0xFF3A3A3A.toInt())
+            }
+            attendanceWaitDialog?.setTitle("考勤记录（今日）")
+        }
+    }
+
     private fun onSnapshot(payload: String) {
         try {
             val packet = gson.fromJson(payload, MqttPacket::class.java) ?: return
             // AQ 告警回放与快照共用 /resp 主题：按 f 字段分流，互不占用对方的 pending/探活状态
             if (packet.f == "alerts") {
                 handleAlertReplay(packet)
+                return
+            }
+            // 考勤记录回传（快捷操作「考勤记录」的弹窗反馈数据）
+            if (packet.f == "attendance") {
+                handleAttendanceResp(packet)
                 return
             }
             Log.d(TAG, "onSnapshot 收到 resp rid=${packet.rid} pending=$queryPendingRid")
@@ -1352,6 +1445,15 @@ private fun setupControllerNav() {
                 ?: return
             Log.d(TAG, "收到被控端告警 type=${record.type} battery=${record.battery} -> ${record.msg}")
             runOnUiThread {
+                // 手动打卡结果：等待弹窗仍开着 → 内容原位刷新为结果（两步合一步）；
+                // 已被用户手动关闭 → 不再打扰，静默入告警历史
+                if (record.type == Protocol.ALERT_TYPE_PUNCH_RESULT) {
+                    if (punchWaitDialog?.isShowing == true) {
+                        finishPunchWaitInPlace(record.msg, record.msg.contains("超时"))
+                    }
+                    overviewFragment.refreshAlerts(AlertHistory.load(this, device.deviceId))
+                    return@runOnUiThread
+                }
                 showAlertDialog(record)
                 overviewFragment.refreshAlerts(AlertHistory.load(this, device.deviceId))
             }
@@ -1630,6 +1732,11 @@ val calendar = CalendarSnapshot(
                 // 主动推增量，控制端 onPush 按 delta 覆盖合并本地缓存并刷新 UI，不再额外查全量。
                 runOnUiThread {
                     Toast.makeText(this@DeviceControlActivity, "已发送动作：$label", Toast.LENGTH_SHORT).show()
+                    // 结果型操作弹等待反馈窗（结果回传时关闭等待窗并弹结果）
+                    when (action) {
+                        MqttPacket.ACTION_PUNCH -> showPunchWaitingDialog()
+                        MqttPacket.ACTION_ATTENDANCE -> showAttendanceWaitingDialog()
+                    }
                 }
             } catch (e: MqttException) {
                 e.printStackTrace()
@@ -1644,7 +1751,130 @@ val calendar = CalendarSnapshot(
         }
     }
 
-    // ===================== 首次进入探活（快照拉取 + 离线判定） =====================
+    // ===================== 快捷操作弹窗反馈（手动打卡/考勤记录） =====================
+    private var punchWaitDialog: androidx.appcompat.app.AlertDialog? = null
+    private var punchWaitTextView: android.widget.TextView? = null
+    private var punchWaitRemaining = 0
+    private var punchResultPending = false
+
+    private val punchWaitTick = object : Runnable {
+        override fun run() {
+            if (punchWaitRemaining <= 0) {
+                // 倒计时归零：原位转为「等待超时」，弹窗保持展示——结果晚到仍可原位刷新；
+                // 同时恢复快捷按钮（结果已超时，允许用户重试）
+                overviewFragment.setActionsBusy(false)
+                mainHandler.removeCallbacks(actionBusyResetRunnable)
+                punchWaitTextView?.text = "等待超时，未收到被控端打卡结果"
+                punchWaitTextView?.setTextColor(0xFFB45309.toInt())
+                return
+            }
+            punchWaitRemaining--
+            punchWaitTextView?.text = "剩余 ${punchWaitRemaining}s"
+            mainHandler.postDelayed(this, 1000L)
+        }
+    }
+
+    /** 用户手动关闭等待弹窗：清除等待态并恢复快捷按钮（关闭弹窗 = 不再等待，按钮立即可操作） */
+    private fun punchWaitManualClosed() {
+        punchResultPending = false
+        mainHandler.removeCallbacks(punchWaitTick)
+        overviewFragment.setActionsBusy(false)
+        mainHandler.removeCallbacks(actionBusyResetRunnable)
+        pendingActionRid = null
+    }
+
+    /** 用户手动关闭考勤等待弹窗：清除等待态并恢复快捷按钮 */
+    private fun attendanceWaitClosed() {
+        attendanceResultPending = false
+        attendanceTimeoutRunnable?.let { mainHandler.removeCallbacks(it) }
+        attendanceTimeoutRunnable = null
+        overviewFragment.setActionsBusy(false)
+        mainHandler.removeCallbacks(actionBusyResetRunnable)
+        pendingActionRid = null
+    }
+
+    /** 手动打卡等待弹窗：展示按任务超时时间计算的倒计时，可手动关闭（关闭不影响结果回传弹窗） */
+    private fun showPunchWaitingDialog() {
+        // 超时基准 = 被控端打卡超时时长（快照设置 ot）+ 执行开销余量
+        val ot = currentSnapshot?.settings?.firstOrNull { it.key == "ot" }?.value?.toString()?.toIntOrNull() ?: 30
+        punchWaitRemaining = (ot + 15).coerceIn(30, 180)
+        punchResultPending = true
+        val tv = android.widget.TextView(this).apply {
+            gravity = android.view.Gravity.CENTER
+            setPadding(0, (resources.displayMetrics.density * 12).toInt(), 0,
+                (resources.displayMetrics.density * 12).toInt())
+            textSize = 15f
+            text = "剩余 ${punchWaitRemaining}s"
+        }
+        punchWaitTextView = tv
+        punchWaitDialog = UnifiedDialogKit.showForm(
+            ctx = this,
+            contentView = tv,
+            title = "手动打卡",
+            message = "指令已下发，等待被控端执行…",
+            positiveText = "关闭",
+            negativeText = null,
+            cancelable = true,
+            onCancel = { punchWaitManualClosed(); true },
+            onConfirm = { punchWaitManualClosed(); true }
+        )
+        mainHandler.removeCallbacks(punchWaitTick)
+        mainHandler.postDelayed(punchWaitTick, 1000L)
+    }
+
+    /** 打卡结果原位刷新：等待弹窗内容直接变为结果（标题同步改「打卡结果」），两步合一步 */
+    private fun finishPunchWaitInPlace(msg: String, isTimeout: Boolean) {
+        mainHandler.removeCallbacks(punchWaitTick)
+        punchResultPending = false
+        // 结果已交付（或超时），无论 ACK 是否及时命中都立即恢复快捷按钮
+        overviewFragment.setActionsBusy(false)
+        mainHandler.removeCallbacks(actionBusyResetRunnable)
+        pendingActionRid = null
+        punchWaitTextView?.apply {
+            text = msg
+            setTextColor(if (isTimeout) 0xFFB45309.toInt() else 0xFF1B7A43.toInt())
+        }
+        punchWaitDialog?.setTitle("打卡结果")
+    }
+
+    private var attendanceWaitDialog: androidx.appcompat.app.AlertDialog? = null
+    private var attendanceWaitTextView: android.widget.TextView? = null
+    private var attendanceResultPending = false
+    private var attendanceTimeoutRunnable: Runnable? = null
+
+    /** 考勤记录等待弹窗：resp 数据通常秒级返回，15s 超时兜底；可手动关闭（关闭后数据不再弹窗） */
+    private fun showAttendanceWaitingDialog() {
+        attendanceResultPending = true
+        val tv = android.widget.TextView(this).apply {
+            gravity = android.view.Gravity.CENTER
+            setPadding(0, (resources.displayMetrics.density * 12).toInt(), 0,
+                (resources.displayMetrics.density * 12).toInt())
+            text = "指令已下发，等待考勤数据…"
+            textSize = 15f
+        }
+        attendanceWaitTextView = tv
+        attendanceWaitDialog = UnifiedDialogKit.showForm(
+            ctx = this,
+            contentView = tv,
+            title = "考勤记录",
+            positiveText = "关闭",
+            negativeText = null,
+            cancelable = true,
+            onCancel = { attendanceWaitClosed(); true },
+            onConfirm = { attendanceWaitClosed(); true }
+        )
+        attendanceTimeoutRunnable = Runnable {
+            attendanceResultPending = false
+            // 超时：恢复快捷按钮（允许重试），弹窗原位转超时提示
+            overviewFragment.setActionsBusy(false)
+            mainHandler.removeCallbacks(actionBusyResetRunnable)
+            pendingActionRid = null
+            attendanceWaitTextView?.text = "等待超时，未收到考勤数据"
+            attendanceWaitTextView?.setTextColor(0xFFB45309.toInt())
+        }
+        mainHandler.postDelayed(attendanceTimeoutRunnable!!, 15_000L)
+    }
+
     /**
      * 首次进入详情页且已配对时主动拉一次快照：以 snapshot 查询作探活，
      * 超时按重试上限多次重试，全部失败才判定离线。整个生命周期只主动拉这一次全量。
@@ -1916,6 +2146,10 @@ val calendar = CalendarSnapshot(
             db.deviceDao().update(updated)
             withContext(Dispatchers.Main) {
                 device = updated
+                // 重新配对载荷落地：默认自动重开 MQTT 连接开关（解绑时被持久化关闭，
+                // 不重开则 initMqtt 兜底守卫会拦截、配对永远无法发起）
+                remoteEnabled = true
+                prefs.edit().putBoolean("remote_enabled_${device.deviceId}", true).apply()
                 Toast.makeText(this@DeviceControlActivity, "已更新配对信息，正在重新配对…", Toast.LENGTH_SHORT).show()
                 setConnStatus("连接中…", false)
                 disconnectMqtt()
@@ -1949,14 +2183,16 @@ val calendar = CalendarSnapshot(
                 overviewFragment.setSnapshotHint(SnapshotHint.DISABLED)
             }
         }
-        // 解绑态：确保控件保持禁用（避免 onResume 误恢复）
+        // 解绑态：确保控件保持禁用（避免 onResume 误恢复）；任务/设置页同步置灰，设备页切「删除设备」
         if (!device.bound) {
-            overviewFragment.setControlsEnabled(false)
+            applyUnboundUiState()
             setConnStatus(
                 if (forceUnbound) "已被强制解绑" else "已解绑",
                 false,
                 if (forceUnbound) "设备已被强制解绑，请重新配对绑定" else "设备已解绑，请重新配对绑定"
             )
+        } else {
+            applyBoundUiState()
         }
         overviewFragment.setRemoteEnabled(remoteEnabled)
     }
@@ -1982,6 +2218,13 @@ val calendar = CalendarSnapshot(
         super.onDestroy()
         mainHandler.removeCallbacks(PAIR_TIMEOUT_RUNNABLE)
         mainHandler.removeCallbacks(queryTimeoutRunnable)
+        // 清理快捷操作反馈弹窗与计时（防泄漏/防残留回调改写 UI）
+        punchResultPending = false
+        attendanceResultPending = false
+        punchWaitDialog?.dismiss(); punchWaitDialog = null
+        attendanceWaitDialog?.dismiss(); attendanceWaitDialog = null
+        mainHandler.removeCallbacks(punchWaitTick)
+        attendanceTimeoutRunnable?.let { mainHandler.removeCallbacks(it) }
         try { mqttClient?.disconnect(); mqttClient?.close() } catch (_: Exception) {}
     }
 
