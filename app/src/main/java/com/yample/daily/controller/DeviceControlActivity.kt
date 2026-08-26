@@ -245,8 +245,15 @@ initFragments()
           }
 
         if (remoteEnabled) {
-            setConnStatus("连接中…", false)
-            initMqtt()
+            if (device.sessionSecret.isBlank() && device.pairingToken.isBlank()) {
+                // 已解绑/从未配对：不建立 MQTT 连接（不打扰被控端），保留缓存数据展示。
+                // 仅「重新配对」可点（其余控件由 onResume 对 !device.bound 统一禁用）；
+                // 扫码/剪贴板导入（applyRePair）获得令牌后才 initMqtt 开始重新配对。
+                setConnStatus("未配对，请重新扫码", false)
+            } else {
+                setConnStatus("连接中…", false)
+                initMqtt()
+            }
         } else {
             setConnStatus("MQTT 已关闭", false)
             overviewFragment.setSnapshotHint(SnapshotHint.DISABLED)
@@ -374,13 +381,10 @@ private fun setupControllerNav() {
           setItemState(binding.navBarDc.iconDevice, binding.navBarDc.labelDevice, activeTag == TAG_DEVICE)
           setItemState(binding.navBarDc.iconSettings, binding.navBarDc.labelSettings, activeTag == TAG_SETTINGS)
 
-        // 总览凸起按钮：激活=紫→蓝渐变圆 + on_header 图标；未激活=白底描边圆 + brand_purple 图标（同 DT）
+        // 总览凸起按钮：两态共用同一白盘（同材质同投影，避免悬浮感割裂），选中仅以图标颜色区分
         val overviewActive = activeTag == TAG_OVERVIEW
-        binding.navBarDc.navOverview.setBackgroundResource(
-            if (overviewActive) R.drawable.bg_brand_gradient_circle else R.drawable.bg_nav_raised_silent)
-        binding.navBarDc.iconOverview.imageTintList = ColorStateList.valueOf(
-            ContextCompat.getColor(this,
-                if (overviewActive) R.color.on_header else R.color.brand_purple))
+        binding.navBarDc.iconOverview.imageTintList =
+            ColorStateList.valueOf(if (overviewActive) activeColor else inactiveColor)
       }
 
     private fun refreshCurrentFragment() {
@@ -398,6 +402,12 @@ private fun setupControllerNav() {
 
     // ===================== MQTT =====================
     private fun initMqtt() {
+        // 已解绑/未配对（无会话密钥且无配对令牌）不建连接，避免打扰被控端；
+        // applyRePair 先写入新 pairingToken 再调本方法，不受拦截
+        if (device.sessionSecret.isBlank() && device.pairingToken.isBlank()) {
+            Log.d(TAG, "initMqtt 跳过：设备未配对 deviceId=${device.deviceId}")
+            return
+        }
         mqttClient = MqttClient(BrokerUtils.normalizeBroker(device.broker), "ctl-" + device.deviceId, MemoryPersistence())
         val options = MqttConnectOptions().apply {
             userName = device.ctlUser
@@ -426,16 +436,25 @@ private fun setupControllerNav() {
                 // 重连成功时复位离线标记：若此前首次探活判定离线，本次重连会重新走首次探活逻辑。
                 recentlyMarkedOffline = false
                 if (device.sessionSecret.isBlank()) {
-                    if (reconnect) {
-                        // 重连：先订配对必需主题并立即发 P，全量主题并行补订（不再固定干等 500ms）
-                        Log.d(TAG, "重连成功，立即发起配对 deviceId=${device.deviceId}")
-                        lifecycleScope.launch(Dispatchers.IO) {
-                            subscribePairEssential()
-                            publishPair(resubscribe = false)
-                            subscribeTopics()
+                    if (device.pairingToken.isNotBlank()) {
+                        // 有配对意图（扫码得到令牌）：
+                        if (reconnect) {
+                            // 重连：先订配对必需主题并立即发 P，全量主题并行补订（不再固定干等 500ms）
+                            Log.d(TAG, "重连成功，立即发起配对 deviceId=${device.deviceId}")
+                            lifecycleScope.launch(Dispatchers.IO) {
+                                subscribePairEssential()
+                                publishPair(resubscribe = false)
+                                subscribeTopics()
+                            }
+                        }
+                        // 初始连接不在此发配对：connect() 之后的初始流程负责，避免重复发起。
+                    } else {
+                        // 已解绑/从未扫码（无配对令牌）：不再向被控端发配对请求打扰，
+                        // 仅订阅读状态；由用户重新扫码发起配对。
+                        if (reconnect) {
+                            lifecycleScope.launch(Dispatchers.IO) { subscribeTopics() }
                         }
                     }
-                    // 初始连接不在此发配对：connect() 之后的初始流程负责，避免重复发起。
                 } else {
                     // 每次连接/重连都重新订阅全部主题；订阅是幂等的。
                     // 关键顺序：先订阅（subscribeTopics 同步等 SUBACK 返回）→ 完成后再首次探活。
@@ -482,12 +501,20 @@ private fun setupControllerNav() {
                 // 与 connectComplete 分支保持一致：复位离线标记，首次探活在下方配对分支触发。
                 recentlyMarkedOffline = false
                 if (device.sessionSecret.isBlank()) {
-                    // 未配对：只先订 pair/accept(+ack) 就发 P，避免等齐 6 路 SUBACK 卡数秒；
-                    // 其余主题后台补订。
-                    pairRetries = 0
-                    subscribePairEssential()
-                    publishPair(resubscribe = false)
-                    subscribeTopics()
+                    if (device.pairingToken.isNotBlank()) {
+                        // 有配对意图（扫码得到令牌）：先订 pair/accept(+ack) 就发 P，
+                        // 避免等齐 6 路 SUBACK 卡数秒；其余主题后台补订。
+                        pairRetries = 0
+                        subscribePairEssential()
+                        publishPair(resubscribe = false)
+                        subscribeTopics()
+                    } else {
+                        // 已解绑/从未扫码：不发起配对打扰被控端，仅订阅读状态，提示用户重新扫码
+                        subscribeTopics()
+                        runOnUiThread {
+                            setConnStatus("未配对，请重新扫码", false)
+                        }
+                    }
                 } else {
                     subscribeTopics()
                     // 首次进入详情页：仅此时主动拉一次快照；
@@ -539,7 +566,8 @@ private fun setupControllerNav() {
             "${MqttPacket.TOPIC_PREFIX}/${device.deviceId}/pair/accept",
             "${MqttPacket.TOPIC_PREFIX}/${device.deviceId}/resp",
             pushTopic,
-            alertTopic
+            alertTopic,
+            "${MqttPacket.TOPIC_PREFIX}/${device.deviceId}/presence"
         )
         val qos = IntArray(topics.size) { 1 }
         var anyDenied = false
@@ -694,6 +722,8 @@ private fun setupControllerNav() {
             topic.endsWith("/push") -> onPush(payload)
             topic.endsWith("/alert") -> onAlert(payload)
             topic.endsWith("/ack") -> handleAck(payload)
+            // presence HB：记录时间戳供首进探活快速路径；lastActivityMs 已在方法首部刷新
+            topic.endsWith("/presence") -> OnlineStateCache.noteHb(device.deviceId, payload)
         }
     }
 
@@ -802,11 +832,16 @@ private fun setupControllerNav() {
         Log.d(TAG, "收到被控端解绑通知 force=$force，断开 MQTT 并清除本地配对态")
         forceUnbound = force
         disconnectMqtt()
+        // 解绑：MQTT 连接开关持久化关闭且不可手动开启（setControlsEnabled(false) 已禁用开关），
+        // 仅当用户重新扫码配对（onPairAccepted 成功）时才默认重新持久化开启。
+        remoteEnabled = false
+        prefs.edit().putBoolean("remote_enabled_${device.deviceId}", false).apply()
         // 清除配对态：连接信息显示「未配对」，btnRePair 自动显示
         device = device.copy(sessionSecret = "", pairingToken = "", bound = false)
         lifecycleScope.launch(Dispatchers.IO) { db.deviceDao().update(device) }
         // 禁用所有远程操作控件（刷新 / MQTT 开关 / 下拉刷新 / 快捷动作），仅留「重新配对」可点
         overviewFragment.setControlsEnabled(false)
+        overviewFragment.setRemoteEnabled(false)
         // 状态文案 + 解绑横幅（区别于普通离线提示）
         setConnStatus(
             if (force) "已被强制解绑" else "已解绑",
@@ -888,15 +923,23 @@ private fun setupControllerNav() {
                     "", "", resultWire, Protocol.CMD_ACK
                 )
                 if (packet.sign != expected) {
-                    // 空签名 + UNBOUND 回执 = 被控端会话已清空（被解绑），且回应的是本端正在等待的指令
-                    // （rid 匹配查询/配对/下发），才可信地判解绑；否则仍按验签失败忽略，防公共 Broker 伪造。
-                    // 被控端未绑定时 doPublishAck 用空会话签名，控制端若仅凭验签失败忽略，会漏掉真实解绑态。
+                    // 空签名 UNBOUND = 被控端会话已清空（被解绑）；rid 须命中本端在途请求，防公共 Broker 伪造
                     if (packet.sign.isBlank() && resultWire.startsWith("UNBOUND") &&
                         packet.rid.isNotBlank() &&
                         (packet.rid == queryPendingRid || packet.rid == pendingPairRid ||
                             pendingCommands.containsKey(packet.rid))
                     ) {
                         Log.w(TAG, "收到空签名 UNBOUND 回执（被控端已解绑）rid=${packet.rid} -> 触发本地解绑")
+                        runOnUiThread { handleRemoteUnbound(force = false) }
+                        return
+                    }
+                    // 换绑后被控端用新会话签 SIGN_FAIL，旧会话验签必失败；
+                    // rid 命中本端在途请求（仅真实被控端可回）即判定解绑/换绑
+                    if (resultWire.startsWith("SIGN_FAIL") &&
+                        packet.rid.isNotBlank() &&
+                        (packet.rid == queryPendingRid || pendingCommands.containsKey(packet.rid))
+                    ) {
+                        Log.w(TAG, "收到 SIGN_FAIL（会话失效/被换绑）rid=${packet.rid} -> 触发本地解绑")
                         runOnUiThread { handleRemoteUnbound(force = false) }
                         return
                     }
@@ -1066,7 +1109,6 @@ private fun setupControllerNav() {
         if (!remoteEnabled) return
         if (device.sessionSecret.isBlank()) {
             // 尚未配对：把“刷新”当作重新发起配对，自愈（被控端令牌在 TTL 内可重复扫码重试）。
-            // 这样「刷新实时数据」按钮与周期刷新都会持续尝试配对，避免停在“配对中”卡死。
             Log.d(TAG, "sendQuery：尚未配对，自动重新发起配对")
             if (mqttClient?.isConnected == true) lifecycleScope.launch { publishPair() }
             return
@@ -1083,14 +1125,9 @@ private fun setupControllerNav() {
         val rid = UUID.randomUUID().toString()
         queryPendingRid = rid
         lastQuerySentTs = ts
-        // 关键修复：超时计时在主线程立即排定，置于所有异步/异常路径之前。
-        // 无论下方 publish 成败，探活都有兜底（落绿或落红），不会再永久卡在「探活中…」黄。
-        // （原实现把 postDelayed 放在 IO 协程的 publish 之后，一旦 publish 抛异常就永不排超时。）
         mainHandler.postDelayed(queryTimeoutRunnable, QUERY_TIMEOUT_MS)
         val sign = MqttSigner.sign(device.sessionSecret, device.deviceId, ts, rid, "snapshot", "", "", MqttPacket.CMD_QUERY)
         val packet = MqttPacket(c = MqttPacket.CMD_QUERY, f = "snapshot", v = null, rid = rid, ts = ts, sign = sign)
-        // 发布移到 IO 协程，避免 publish(QoS1 同步等待 PUBACK) 阻塞主线程导致 ANR；
-        // 超时计时已在主线程排定，发布结果只影响快照/提示。
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 mqttClient?.publish("${MqttPacket.TOPIC_PREFIX}/${device.deviceId}/cmd",
@@ -1117,22 +1154,23 @@ private fun setupControllerNav() {
         if (queryRetryCount < maxRetries) {
             queryRetryCount++
             queryPendingRid = null
-            overviewFragment.setSnapshotHint(SnapshotHint.WAITING, lastActivityMs, QUERY_TIMEOUT_MS)
+            overviewFragment.setSnapshotHint(SnapshotHint.WAITING, effectiveLastSeenMs(), QUERY_TIMEOUT_MS)
             sendQuery(force = true)
         } else {
             queryPendingRid = null
             val wasFirstEntry = firstEntryProbeActive
             queryRetryCount = 0
             firstEntryProbeActive = false
-            overviewFragment.setSnapshotHint(SnapshotHint.FAILED, lastActivityMs)
+            overviewFragment.setSnapshotHint(SnapshotHint.FAILED, effectiveLastSeenMs())
             if (wasFirstEntry) {
                 Log.w(TAG, "首次探活两次失败 → 判定被控端离线")
                 markControlledOffline()
             } else {
                 runOnUiThread {
-                    val msg = if (lastActivityMs > 0) {
-                        val ago = formatLastSeen(lastActivityMs)
-                        "被控端未返回快照（最近活跃$ago），请确认被控端在线且已配对，可点击「刷新实时数据」立即重试"
+                    val lastSeenMs = effectiveLastSeenMs()
+                    val msg = if (lastSeenMs > 0) {
+                        val ago = formatLastSeen(lastSeenMs)
+                        "被控端未返回快照（最近活跃$ago），请确认被控端在线且已配对，可下拉刷新立即重试"
                     } else {
                         "被控端未返回快照，请确认被控端在线且已配对"
                     }
@@ -1615,14 +1653,26 @@ val calendar = CalendarSnapshot(
         if (!remoteEnabled || device.sessionSecret.isBlank() || !device.bound) return
         if (firstEntryProbeStarted) return // 整个生命周期只主动拉一次
         firstEntryProbeStarted = true
-        firstEntryProbeActive = true
-        queryRetryCount = 0
-        Log.d(TAG, "首次进入：发起探活 + 快照拉取（3s×3，deviceId=${device.deviceId}）")
-        // 只有本次真正发出探活才置「探活中」(琥珀)。connectComplete 与 connect() 返回分支
-        // 都会调到这，若在上层无条件置琥珀，后到者会把已确认成功的绿灯覆盖成黄、且此处因
-        // firstEntryProbeStarted=true 直接 return 不再发探活 → 色灯卡黄。集中在探活真正发起点设置。
-        runOnUiThread { setConnStatus("探活中…", false) }
-        runOnUiThread { overviewFragment.setProbing(true) }
+        // HB 快速路径：心跳新鲜直接判在线，跳过 3s×3 探活离线判定；
+        // 会话有效性由下方快照 QUERY 验签兜底（SIGN_FAIL → 解绑）。HB 过期/缺失走常规探活。
+        val hbFresh = OnlineStateCache.hbAgeMs(device.deviceId)?.let { it < OnlineStateCache.HB_FRESH_MS } == true
+        if (hbFresh) {
+            firstEntryProbeActive = false // 走常规查询重试，不触发「探活两次失败离线判定」
+            Log.d(TAG, "首次进入：HB 新鲜，直接判在线（deviceId=${device.deviceId}），快照拉取中")
+            runOnUiThread {
+                setConnStatus("在线（HB）", true)
+                overviewFragment.setProbing(false)
+            }
+        } else {
+            firstEntryProbeActive = true
+            queryRetryCount = 0
+            Log.d(TAG, "首次进入：HB 缺失/过期，常规探活 + 快照拉取（3s×3，deviceId=${device.deviceId}）")
+            // 只有本次真正发出探活才置「探活中」(琥珀)。connectComplete 与 connect() 返回分支
+            // 都会调到这，若在上层无条件置琥珀，后到者会把已确认成功的绿灯覆盖成黄、且此处因
+            // firstEntryProbeStarted=true 直接 return 不再发探活 → 色灯卡黄。集中在探活真正发起点设置。
+            runOnUiThread { setConnStatus("探活中…", false) }
+            runOnUiThread { overviewFragment.setProbing(true) }
+        }
         // 首次进入探活是「必须真正发出」的查询，豁免节流（force）
         sendQuery(force = true)
         // 同时拉一次近期告警回放（AQ）：补齐本端离线期间漏收的告警。
@@ -1636,11 +1686,18 @@ val calendar = CalendarSnapshot(
      * 2) 禁用快捷动作按钮（避免给一台失联的设备继续下指令）；
      * 3) 弹 Snackbar 提示用户该设备可能已关机/网络断开 → 点击重试 / 重新连接。
      */
+    /** 最近活跃时间：取「本连接收到消息」与「presence HB 心跳」中较新者（HB 由列表/后台保温，跨页面也准确） */
+    private fun effectiveLastSeenMs(): Long = maxOf(
+        lastActivityMs,
+        OnlineStateCache.hbAgeMs(device.deviceId)?.let { System.currentTimeMillis() - it } ?: 0L
+    )
+
     private fun markControlledOffline() {
         if (recentlyMarkedOffline) return
         recentlyMarkedOffline = true
-        val lastSeenText = if (lastActivityMs > 0) formatLastSeen(lastActivityMs) else "未知"
-        val snackbarMsg = if (lastActivityMs > 0) {
+        val lastSeenMs = effectiveLastSeenMs()
+        val lastSeenText = if (lastSeenMs > 0) formatLastSeen(lastSeenMs) else "未知"
+        val snackbarMsg = if (lastSeenMs > 0) {
             "被控端无响应（最近活跃$lastSeenText，可能临时离线），已重试 ${QUERY_PROBE_MAX_RETRIES + 1} 次均未成功，点击「重新连接」手动重试"
         } else {
             "被控端无响应（疑似离线），点击「重新连接」重新连接"

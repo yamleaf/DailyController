@@ -285,7 +285,9 @@ class OfflineMonitorService : Service() {
                     lastConnectedAt[id] = System.currentTimeMillis()
                     try {
                         client.subscribe("${MqttPacket.TOPIC_PREFIX}/$id/alert", 1)
-                        Log.d(TAG, "已订阅 alert deviceId=$id reconnect=$reconnect clientId=${monitorClientId(id)}")
+                        // presence HB：retained 立即送达 + 持续保温，供列表探活快速路径使用
+                        client.subscribe("${MqttPacket.TOPIC_PREFIX}/$id/presence", 0)
+                        Log.d(TAG, "已订阅 alert/presence deviceId=$id reconnect=$reconnect clientId=${monitorClientId(id)}")
                     } catch (e: Exception) {
                         Log.e(TAG, "订阅 alert 失败 $id", e)
                     }
@@ -298,8 +300,12 @@ class OfflineMonitorService : Service() {
                 }
 
                 override fun messageArrived(topic: String?, message: MqttMessage?) {
-                    if (topic == null || message == null || !topic.endsWith("/alert")) return
-                    handleAlertPayload(id, String(message.payload))
+                    val payload = message?.payload?.let { String(it) } ?: return
+                    when {
+                        topic?.endsWith("/alert") == true -> handleAlertPayload(id, payload)
+                        // HB 心跳保温：持续刷新时间戳，设备列表探活据此走快速路径
+                        topic?.endsWith("/presence") == true -> OnlineStateCache.noteHb(id, payload)
+                    }
                 }
 
                 override fun deliveryComplete(token: IMqttDeliveryToken?) {}
@@ -310,6 +316,7 @@ class OfflineMonitorService : Service() {
             if (client.isConnected) {
                 lastConnectedAt[id] = System.currentTimeMillis()
                 client.subscribe("${MqttPacket.TOPIC_PREFIX}/$id/alert", 1)
+                client.subscribe("${MqttPacket.TOPIC_PREFIX}/$id/presence", 0)
             }
         } catch (e: Exception) {
             Log.e(TAG, "监测连接失败 $id", e)

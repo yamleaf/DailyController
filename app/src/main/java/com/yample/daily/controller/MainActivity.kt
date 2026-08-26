@@ -541,6 +541,28 @@ class MainActivity : AppCompatActivity() {
      * 完成后断开并关闭连接。个人场景设备数少（≤5），N 次短连接可接受；单次等待 ≤3s 不卡 UI。
      */
     private fun probeOnline(device: DeviceRecord, adapter: DeviceAdapter) {
+        // 已解绑/未配对设备：不再主动连接打扰被控端，状态由 DB 的 bound 标志直接呈现
+        if (!device.bound || device.sessionSecret.isBlank()) {
+            lifecycleScope.launch(Dispatchers.Main) {
+                onlineState[device.deviceId] = null
+                adapter.setOnline(device.deviceId, null)
+            }
+            return
+        }
+        // HB 快速路径：被控端 presence 心跳足够新鲜（<3 分钟）且会话校验未过期 → 直接判在线，
+        // 免去一次完整 MQTT 短连接探活；HB 过期/缺失，或会话校验到期（需验签识别解绑/换绑）才回落常规探活。
+        // 关键：不能无限跳过会话校验，否则解绑/换绑设备因 HB 持续在发而永远误判「在线」。
+        val hbFresh = OnlineStateCache.hbAgeMs(device.deviceId)?.let { it < OnlineStateCache.HB_FRESH_MS } == true
+        val checkAge = OnlineStateCache.sessionCheckAgeMs(device.deviceId)
+        val needSessionCheck = checkAge == null || checkAge >= OnlineStateCache.SESSION_CHECK_INTERVAL_MS
+        if (hbFresh && !needSessionCheck) {
+            OnlineStateCache.put(device.deviceId, true, System.currentTimeMillis())
+            lifecycleScope.launch(Dispatchers.Main) {
+                onlineState[device.deviceId] = true
+                adapter.setOnline(device.deviceId, true)
+            }
+            return
+        }
         lifecycleScope.launch(Dispatchers.IO) {
             var result: Boolean? = null
             var unbound = false
@@ -568,6 +590,8 @@ class MainActivity : AppCompatActivity() {
                             "ack" -> if (pendingRid != null && parseRid(payload) == pendingRid) {
                                 ackLatch.complete(payload)
                             }
+                            // 顺路记录 HB 心跳时间戳，供下次探活走快速路径
+                            "presence" -> OnlineStateCache.noteHb(device.deviceId, payload)
                         }
                     }
                     override fun connectionLost(cause: Throwable?) {}
@@ -575,6 +599,8 @@ class MainActivity : AppCompatActivity() {
                 })
                 client.connect(opts)
                 client.subscribe("${MqttPacket.TOPIC_PREFIX}/${device.deviceId}/status", 1)
+                // presence 的 retained HB 会立即送达，顺路刷新 HB 缓存
+                client.subscribe("${MqttPacket.TOPIC_PREFIX}/${device.deviceId}/presence", 1)
                 val got = try {
                     statusLatch.get(3, TimeUnit.SECONDS)
                 } catch (_: Exception) {
@@ -630,6 +656,9 @@ class MainActivity : AppCompatActivity() {
                         // 设备回 SIGN_FAIL/UNBOUND：本端会话已失效（被控端已解绑或与其他手机换绑）
                         unbound = true
                         result = null
+                    } else {
+                        // 验签通过：会话有效，记录校验时间，此后 HB 快速路径可继续复用
+                        OnlineStateCache.noteSessionChecked(device.deviceId)
                     }
                 }
                 client.disconnect()
@@ -736,6 +765,11 @@ class MainActivity : AppCompatActivity() {
     private suspend fun applyUnbound(device: DeviceRecord) {
         val updated = device.copy(sessionSecret = "", pairingToken = "", bound = false)
         db.deviceDao().update(updated)
+        // 解绑：MQTT 连接开关持久化关闭，详情页打开时不再自动连接（仅重新扫码配对会重新开启）
+        runCatching {
+            getSharedPreferences("remote_ctrl", MODE_PRIVATE)
+                .edit().putBoolean("remote_enabled_${device.deviceId}", false).apply()
+        }
         OnlineStateCache.remove(device.deviceId)
         withContext(Dispatchers.Main) {
             onlineState.remove(device.deviceId)
