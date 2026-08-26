@@ -103,6 +103,31 @@ object DeviceAlertInbox {
                         "两台同ID设备会互相顶替上线，导致指令错发、状态混乱。建议检查所有设备的ID设置，改成各不相同的ID。"
                 }
             }
+            Protocol.ALERT_TYPE_REMOTE_STOP -> {
+                val from = obj.get("msg")?.asString ?: "远程终止任务"
+                title = "🛑 任务被终止"
+                from
+            }
+            Protocol.ALERT_TYPE_LOOP_OFF -> {
+                val from = obj.get("msg")?.asString ?: "关闭每日循环"
+                title = "⏸️ 每日循环已关闭"
+                from
+            }
+            Protocol.ALERT_TYPE_PAUSED -> {
+                val from = obj.get("msg")?.asString ?: "进入暂停使用"
+                title = "⏹️ 已暂停使用"
+                from
+            }
+            Protocol.ALERT_TYPE_TASK_RESET -> {
+                val from = obj.get("msg")?.asString ?: "每日任务重置"
+                title = "🔄 任务已重置"
+                from
+            }
+            Protocol.ALERT_TYPE_UNBOUND -> {
+                val from = obj.get("msg")?.asString ?: "解除绑定"
+                title = "🔗 设备已解绑"
+                from
+            }
             else -> {
                 title = "收到被控端告警"
                 "告警类型：$type"
