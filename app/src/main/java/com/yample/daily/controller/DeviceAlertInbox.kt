@@ -128,6 +128,21 @@ object DeviceAlertInbox {
                 title = "🔗 设备已解绑"
                 from
             }
+            Protocol.ALERT_TYPE_PUNCH_RESULT -> {
+                val from = obj.get("msg")?.asString ?: "手动打卡结果"
+                title = "📲 手动打卡结果"
+                from
+            }
+            Protocol.ALERT_TYPE_TASK_START -> {
+                val from = obj.get("msg")?.asString ?: "远程启动任务"
+                title = "▶️ 任务已启动"
+                from
+            }
+            Protocol.ALERT_TYPE_LOOP_ON -> {
+                val from = obj.get("msg")?.asString ?: "开启每日循环"
+                title = "⏯️ 每日循环已开启"
+                from
+            }
             else -> {
                 title = "收到被控端告警"
                 "告警类型：$type"
