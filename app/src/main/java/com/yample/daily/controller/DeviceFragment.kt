@@ -26,6 +26,18 @@ class DeviceFragment : Fragment(), SnapshotFragment {
     /** 解绑设备：入口由设置页移至设备页 */
     var onUnbind: (() -> Unit)? = null
 
+    /** 删除设备（仅未绑定态）：清除本地全部数据并返回列表 */
+    var onDelete: (() -> Unit)? = null
+
+    private var unboundMode = false
+
+    /** 双态按钮：未绑定显示「删除设备」，已绑定显示「解绑设备」 */
+    fun setUnboundState(unbound: Boolean) {
+        unboundMode = unbound
+        if (_binding == null) return
+        binding.btnUnbindDevice.text = if (unbound) "删除设备" else "解绑设备"
+    }
+
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentDeviceBinding.inflate(inflater, container, false)
         return binding.root
@@ -44,7 +56,9 @@ class DeviceFragment : Fragment(), SnapshotFragment {
         binding.btnToggleConn.setOnClickListener { toggleSection(binding.bodyConn, binding.ivChevronConn, "collapse_conn") }
         binding.btnToggleDevice.setOnClickListener { toggleSection(binding.bodyDevice, binding.ivChevronDevice, "collapse_deviceinfo") }
         binding.btnToggleRemote.setOnClickListener { toggleSection(binding.bodyRemote, binding.ivChevronRemote, "collapse_remote") }
-        binding.btnUnbindDevice.setOnClickListener { onUnbind?.invoke() }
+        binding.btnUnbindDevice.setOnClickListener {
+            if (unboundMode) onDelete?.invoke() else onUnbind?.invoke()
+        }
         snapshot?.let { render(it) }
     }
 

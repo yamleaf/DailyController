@@ -228,6 +228,14 @@ class OverviewFragment : Fragment(), SnapshotFragment {
         val failed = lastConnText == "连接失败"
         binding.dotStatus.isClickable = failed
         binding.dotStatus.setOnClickListener { if (failed) onRetryClick?.invoke() }
+        // 解绑态重配对入口
+        binding.btnRePair.setOnClickListener { onRePairClick?.invoke() }
+    }
+
+    /** 解绑态显示「重新配对」入口；配对成功后隐藏 */
+    fun setRePairVisible(visible: Boolean) {
+        if (_binding == null) return
+        binding.btnRePair.visibility = if (visible) View.VISIBLE else View.GONE
     }
 
     /** 状态 → (颜色, 是否脉冲)：绿=在线已配对 / 琥珀=配对中·未配对·连接中 / 红=失败·错误·无心跳 / 灰=已解绑·离线·连接中 */
@@ -336,7 +344,8 @@ class OverviewFragment : Fragment(), SnapshotFragment {
             row.tvRowValue.text = when (alert.type) {
                 "device_offline" -> "已离线"
                 Protocol.ALERT_TYPE_ID_CONFLICT -> "有陌生设备抢用本设备ID"
-                else -> "${alert.battery}%"
+                // 电量类告警展示百分比；操作留痕类无电量数据（-1）显示「操作记录」
+                else -> if (alert.battery in 0..100) "${alert.battery}%" else "操作记录"
             }
             // 右侧摘要超宽时用跑马灯循环滚动，保证信息完整可见（仅告警行生效，不影响共用布局的其他页面）
             row.tvRowValue.ellipsize = android.text.TextUtils.TruncateAt.MARQUEE

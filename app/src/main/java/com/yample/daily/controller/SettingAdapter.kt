@@ -20,6 +20,10 @@ class SettingAdapter(
     private val onEditValue: (SettingItem) -> Unit
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
+    /** 解绑态全局禁用：所有行置灰且不可交互（优先于单行 writable） */
+    @Volatile
+    var commandsEnabled = true
+
     private companion object {
         private const val TYPE_HEADER = 0
         private const val TYPE_ITEM = 1
@@ -87,7 +91,7 @@ class SettingAdapter(
             is SettingListItem.Item -> {
                 val vh = holder as ItemViewHolder
                 val setting = item.setting
-                val enabled = setting.writable
+                val enabled = setting.writable && commandsEnabled
                 vh.binding.tvSettingLabel.text = setting.label
                 vh.binding.root.alpha = if (enabled) 1f else 0.45f
                 val icon = iconMap[setting.key]

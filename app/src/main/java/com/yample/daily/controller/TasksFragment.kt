@@ -24,6 +24,16 @@ class TasksFragment : Fragment(), SnapshotFragment {
     var onEditTask: ((TaskItem, String, String) -> Unit)? = null
     var onDeleteTask: ((TaskItem) -> Unit)? = null
 
+    private var commandsEnabled = true
+
+    /** 解绑态禁用任务增删改（按钮置灰，编辑/删除弹窗不再弹出） */
+    fun setCommandsEnabled(enabled: Boolean) {
+        commandsEnabled = enabled
+        if (_binding == null) return
+        binding.btnAddTask.isEnabled = enabled
+        binding.btnAddTask.alpha = if (enabled) 1f else 0.45f
+    }
+
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentTasksBinding.inflate(inflater, container, false)
         return binding.root
@@ -32,8 +42,9 @@ class TasksFragment : Fragment(), SnapshotFragment {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         taskAdapter = TaskRowAdapter(taskItems,
-            onEdit = { item -> showEditTaskPicker(item) },
+            onEdit = { item -> if (commandsEnabled) showEditTaskPicker(item) },
             onDelete = { item ->
+                if (!commandsEnabled) return@TaskRowAdapter
                 showDestructiveConfirm(
                     requireContext(),
                     title = "删除任务",
@@ -44,6 +55,9 @@ class TasksFragment : Fragment(), SnapshotFragment {
         binding.rvTasks.layoutManager = LinearLayoutManager(requireContext())
         binding.rvTasks.adapter = taskAdapter
         binding.btnAddTask.setOnClickListener { showAddTaskPicker() }
+        // 视图可能晚于禁用指令创建（懒加载 tab），创建后立即应用置灰态
+        binding.btnAddTask.isEnabled = commandsEnabled
+        binding.btnAddTask.alpha = if (commandsEnabled) 1f else 0.45f
         snapshot?.let { render(it) }
     }
 
@@ -61,7 +75,8 @@ class TasksFragment : Fragment(), SnapshotFragment {
     }
 
     private fun showAddTaskPicker() {
-        showTaskDialog("添加打卡时间", "09:00:00", "") { time, name ->
+        if (!commandsEnabled) return
+        showTaskDialog("添加任务时间", "09:00:00", "") { time, name ->
             onAddTask?.invoke(time, name)
         }
     }

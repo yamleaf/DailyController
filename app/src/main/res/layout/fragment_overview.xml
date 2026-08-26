@@ -125,6 +125,18 @@
                     </FrameLayout>
                 </LinearLayout>
 
+                <!-- 解绑态专属：重新配对入口（仅未绑定时显示） -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnRePair"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/dp_12"
+                    android:text="重新配对"
+                    android:visibility="gone"
+                    app:cornerRadius="@dimen/dp_12"
+                    app:icon="@drawable/ic_device"
+                    app:iconGravity="textStart" />
+
                 <!-- MQTT 连接开关行 -->
                 <LinearLayout
                     android:layout_width="match_parent"

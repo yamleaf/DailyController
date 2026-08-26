@@ -22,6 +22,9 @@ class SettingsFragment : Fragment(), SnapshotFragment {
     private val settingItems = mutableListOf<SettingListItem>()
     private lateinit var settingAdapter: SettingAdapter
 
+    /** 解绑态命令禁用标志：持有在 Fragment 上，适配器重建（懒创建视图）后依然生效 */
+    private var commandsEnabled = true
+
     var onToggle: ((SettingItem, Boolean) -> Unit)? = null
     var onIntChange: ((SettingItem, Int) -> Unit)? = null
 
@@ -76,7 +79,9 @@ class SettingsFragment : Fragment(), SnapshotFragment {
         )
         binding.rvSettings.layoutManager = LinearLayoutManager(requireContext())
         binding.rvSettings.adapter = settingAdapter
-        binding.btnEditMsgChannel.setOnClickListener { showMsgChannelDialog() }
+        // 适配器可能在禁用标志设置之后才创建（视图懒加载），创建后立即应用
+        settingAdapter.commandsEnabled = commandsEnabled
+        binding.btnEditMsgChannel.setOnClickListener { if (commandsEnabled) showMsgChannelDialog() }
         snapshot?.let { render(it) }
     }
 
@@ -109,6 +114,20 @@ class SettingsFragment : Fragment(), SnapshotFragment {
         settingAdapter.notifyDataSetChanged()
         renderMsgChannelCard(s)
         renderStatuses(s)
+    }
+
+    /** 解绑态禁用设置页全部行的下发交互（置灰，恢复后 notifyDataSetChanged 还原）；
+     *  消息渠道配置按钮在适配器之外（独立镜像卡片），需一并置灰 */
+    fun setCommandsEnabled(enabled: Boolean) {
+        commandsEnabled = enabled
+        if (this::settingAdapter.isInitialized) {
+            settingAdapter.commandsEnabled = enabled
+            if (_binding != null) settingAdapter.notifyDataSetChanged()
+        }
+        if (_binding != null) {
+            binding.btnEditMsgChannel.isEnabled = enabled
+            binding.btnEditMsgChannel.alpha = if (enabled) 1f else 0.45f
+        }
     }
 
     // ===================== 需求 1：消息渠道镜像卡片 =====================
