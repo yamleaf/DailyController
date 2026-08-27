@@ -4,4 +4,7 @@
 
     <!-- 左滑操作面板（QQ 式色块）：置顶按钮的固定灰色（跟随系统深浅色不变，与 QQ 一致） -->
     <color name="action_pin_bg">#FF7F7F88</color>
+
+    <!-- 「重新配对」按钮：浅杏橙呼吸描边 / 图标 / 文字（解绑态引导用） -->
+    <color name="re_pair_accent">#EF9A53</color>
 </resources>

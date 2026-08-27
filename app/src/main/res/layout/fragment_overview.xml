@@ -47,6 +47,23 @@
                 android:orientation="vertical"
                 android:padding="@dimen/dp_20">
 
+                <!-- 解绑态专属：重新配对入口（置顶显示，浅色背景 + 呼吸描边） -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnRePair"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="@dimen/dp_16"
+                    android:text="重新配对"
+                    android:visibility="gone"
+                    app:backgroundTint="@color/md_primaryContainer"
+                    app:cornerRadius="@dimen/dp_12"
+                    app:icon="@drawable/ic_device"
+                    app:iconGravity="textStart"
+                    app:iconTint="@color/re_pair_accent"
+                    app:strokeColor="@color/re_pair_accent"
+                    app:strokeWidth="1.5dp"
+                    android:textColor="@color/re_pair_accent" />
+
                 <!-- 第一行：图标 + 设备名/副标题 + 状态灯 -->
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -124,18 +141,6 @@
                             android:focusable="false" />
                     </FrameLayout>
                 </LinearLayout>
-
-                <!-- 解绑态专属：重新配对入口（仅未绑定时显示） -->
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnRePair"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="@dimen/dp_12"
-                    android:text="重新配对"
-                    android:visibility="gone"
-                    app:cornerRadius="@dimen/dp_12"
-                    app:icon="@drawable/ic_device"
-                    app:iconGravity="textStart" />
 
                 <!-- MQTT 连接开关行 -->
                 <LinearLayout

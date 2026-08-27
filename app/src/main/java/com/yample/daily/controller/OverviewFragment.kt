@@ -233,9 +233,44 @@ class OverviewFragment : Fragment(), SnapshotFragment {
     }
 
     /** 解绑态显示「重新配对」入口；配对成功后隐藏 */
+    private var rePairBreathAnimator: ValueAnimator? = null
+
+    /** 解绑态显示「重新配对」入口（置顶）；显示时启动呼吸描边动画，隐藏时停止 */
     fun setRePairVisible(visible: Boolean) {
         if (_binding == null) return
         binding.btnRePair.visibility = if (visible) View.VISIBLE else View.GONE
+        if (visible) startRePairBreath() else stopRePairBreath()
+    }
+
+    /** 呼吸描边：浅杏橙描边透明度在 0.25↔0.95 间循环，营造引导关注效果 */
+    private fun startRePairBreath() {
+        rePairBreathAnimator?.cancel()
+        val primary = ContextCompat.getColor(requireContext(), R.color.re_pair_accent)
+        val baseRgb = primary and 0x00FFFFFF
+        rePairBreathAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 1400L
+            repeatMode = ValueAnimator.REVERSE
+            repeatCount = ValueAnimator.INFINITE
+            addUpdateListener { anim ->
+                // 防御：视图销毁时可能仍有最后一帧回调在跑，此时 _binding 已置空
+                if (_binding == null) return@addUpdateListener
+                val f = anim.animatedValue as Float
+                val alpha = ((0.25f + 0.70f * f) * 255).toInt()
+                binding.btnRePair.strokeColor = android.content.res.ColorStateList.valueOf(baseRgb or (alpha shl 24))
+            }
+            start()
+        }
+    }
+
+    private fun stopRePairBreath() {
+        rePairBreathAnimator?.cancel()
+        rePairBreathAnimator = null
+        if (_binding != null) {
+            binding.btnRePair.strokeColor =
+                android.content.res.ColorStateList.valueOf(
+                    ContextCompat.getColor(requireContext(), R.color.re_pair_accent)
+                )
+        }
     }
 
     /** 状态 → (颜色, 是否脉冲)：绿=在线已配对 / 琥珀=配对中·未配对·连接中 / 红=失败·错误·无心跳 / 灰=已解绑·离线·连接中 */
@@ -602,6 +637,8 @@ class OverviewFragment : Fragment(), SnapshotFragment {
     override fun onDestroyView() {
         super.onDestroyView()
         cancelSwipeRefresh()
+        // 取消呼吸动画，避免视图销毁后 addUpdateListener 访问 binding 触发 NPE/泄漏
+        stopRePairBreath()
         _binding = null
     }
 }
