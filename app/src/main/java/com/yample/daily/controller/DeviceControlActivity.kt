@@ -720,9 +720,14 @@ private fun setupControllerNav() {
     }
 
     private fun handleIncoming(topic: String, payload: String, retained: Boolean = false) {
-        lastActivityMs = System.currentTimeMillis()
-        if (recentlyMarkedOffline) {
-            runOnUiThread { recoverFromFalseOffline() }
+        // 仅实时消息证明被控端活跃：刷新「上次活跃」、解除离线误判。
+        // retained 是 broker 补推的历史快照（最后一次 status/HB），不证明当时活跃——
+        // 若据其刷新/恢复，离线后重连补推 retained 会误显示"几秒前活跃"甚至误点亮绿灯。
+        if (!retained) {
+            lastActivityMs = System.currentTimeMillis()
+            if (recentlyMarkedOffline) {
+                runOnUiThread { recoverFromFalseOffline() }
+            }
         }
         when {
             topic.endsWith("/status") -> handleStatus(payload.trim(), retained)
