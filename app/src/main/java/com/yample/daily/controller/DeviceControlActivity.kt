@@ -7,6 +7,7 @@ import android.content.res.ColorStateList
 import android.util.Log
 import androidx.transition.TransitionManager
 import android.graphics.Outline
+import android.graphics.Typeface
 import android.view.ViewOutlineProvider
 import android.view.View
 import android.view.ViewGroup
@@ -1245,24 +1246,49 @@ private fun setupControllerNav() {
             overviewFragment.setActionsBusy(false)
             mainHandler.removeCallbacks(actionBusyResetRunnable)
             pendingActionRid = null
-            // 原位刷新：等待弹窗内容直接变为考勤列表（弹窗保持，用户手动关闭）
-            val sb = StringBuilder()
+            // 原位刷新：等待弹窗内容直接变为考勤列表（每行：时间左对齐 + 状态右对齐，中间留白）
+            val dp = { v: Float -> (v * resources.displayMetrics.density + 0.5f).toInt() }
+            attendanceWaitContainer?.removeAllViews()
+            var hasRecord = false
             runCatching {
                 val root = JsonParser.parseString(json).asJsonObject
                 val records = root.getAsJsonArray("records")
                 records?.forEach { e ->
                     runCatching {
                         val o = e.asJsonObject
-                        sb.append("· ").append(o.get("msg")?.asString ?: "")
-                            .append("（").append(o.get("time")?.asString ?: "").append("）\n")
+                        val time = o.get("time")?.asString ?: ""
+                        val status = o.get("msg")?.asString ?: ""
+                        if (time.isBlank() && status.isBlank()) return@runCatching
+                        hasRecord = true
+                        // 每行横排：时间(左,weight1) + 状态(右)
+                        val row = android.widget.LinearLayout(this@DeviceControlActivity).apply {
+                            orientation = android.widget.LinearLayout.HORIZONTAL
+                            gravity = android.view.Gravity.CENTER_VERTICAL
+                            addView(android.widget.TextView(this@DeviceControlActivity).apply {
+                                layoutParams = android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                                text = time
+                                textSize = 13f
+                                gravity = android.view.Gravity.START
+                                setTextColor(0xFF3A3A3A.toInt())
+                            })
+                            addView(android.widget.TextView(this@DeviceControlActivity).apply {
+                                text = status
+                                textSize = 13f
+                                gravity = android.view.Gravity.END
+                                setTextColor(0xFF3A3A3A.toInt())
+                            })
+                        }
+                        attendanceWaitContainer?.addView(row)
                     }
                 }
             }
-            attendanceWaitTextView?.apply {
-                text = sb.toString().trim().ifBlank { "今日暂无考勤记录" }
-                textSize = 13f
-                gravity = android.view.Gravity.START
-                setTextColor(0xFF3A3A3A.toInt())
+            if (!hasRecord) {
+                attendanceWaitContainer?.addView(android.widget.TextView(this@DeviceControlActivity).apply {
+                    gravity = android.view.Gravity.CENTER
+                    text = "今日暂无考勤记录"
+                    textSize = 13f
+                    setTextColor(0xFF3A3A3A.toInt())
+                })
             }
             attendanceWaitDialog?.setTitle("考勤记录（今日）")
         }
@@ -1753,7 +1779,8 @@ val calendar = CalendarSnapshot(
 
     // ===================== 快捷操作弹窗反馈（手动打卡/考勤记录） =====================
     private var punchWaitDialog: androidx.appcompat.app.AlertDialog? = null
-    private var punchWaitTextView: android.widget.TextView? = null
+    private var punchWaitContainer: android.widget.LinearLayout? = null
+    private var punchWaitCountdownView: android.widget.TextView? = null
     private var punchWaitRemaining = 0
     private var punchResultPending = false
 
@@ -1764,12 +1791,17 @@ val calendar = CalendarSnapshot(
                 // 同时恢复快捷按钮（结果已超时，允许用户重试）
                 overviewFragment.setActionsBusy(false)
                 mainHandler.removeCallbacks(actionBusyResetRunnable)
-                punchWaitTextView?.text = "等待超时，未收到被控端打卡结果"
-                punchWaitTextView?.setTextColor(0xFFB45309.toInt())
+                punchWaitContainer?.removeAllViews()
+                punchWaitContainer?.addView(android.widget.TextView(this@DeviceControlActivity).apply {
+                    gravity = android.view.Gravity.CENTER
+                    text = "等待超时，未收到被控端打卡结果"
+                    textSize = 14f
+                    setTextColor(0xFFB45309.toInt())
+                })
                 return
             }
             punchWaitRemaining--
-            punchWaitTextView?.text = "剩余 ${punchWaitRemaining}s"
+            punchWaitCountdownView?.text = "剩余 ${punchWaitRemaining}s"
             mainHandler.postDelayed(this, 1000L)
         }
     }
@@ -1799,17 +1831,24 @@ val calendar = CalendarSnapshot(
         val ot = currentSnapshot?.settings?.firstOrNull { it.key == "ot" }?.value?.toString()?.toIntOrNull() ?: 30
         punchWaitRemaining = (ot + 15).coerceIn(30, 180)
         punchResultPending = true
-        val tv = android.widget.TextView(this).apply {
-            gravity = android.view.Gravity.CENTER
-            setPadding(0, (resources.displayMetrics.density * 12).toInt(), 0,
-                (resources.displayMetrics.density * 12).toInt())
-            textSize = 15f
-            text = "剩余 ${punchWaitRemaining}s"
+        val container = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(
+                (resources.displayMetrics.density * 16).toInt(),
+                (resources.displayMetrics.density * 12).toInt(),
+                (resources.displayMetrics.density * 16).toInt(),
+                (resources.displayMetrics.density * 12).toInt()
+            )
+            addView(android.widget.TextView(this@DeviceControlActivity).apply {
+                gravity = android.view.Gravity.CENTER
+                textSize = 15f
+                text = "剩余 ${punchWaitRemaining}s"
+            }.also { punchWaitCountdownView = it })
         }
-        punchWaitTextView = tv
+        punchWaitContainer = container
         punchWaitDialog = UnifiedDialogKit.showForm(
             ctx = this,
-            contentView = tv,
+            contentView = container,
             title = "手动打卡",
             message = "指令已下发，等待被控端执行…",
             positiveText = "关闭",
@@ -1830,32 +1869,74 @@ val calendar = CalendarSnapshot(
         overviewFragment.setActionsBusy(false)
         mainHandler.removeCallbacks(actionBusyResetRunnable)
         pendingActionRid = null
-        punchWaitTextView?.apply {
-            text = msg
-            setTextColor(if (isTimeout) 0xFFB45309.toInt() else 0xFF1B7A43.toInt())
+        val lines = msg.split("\n")
+        val firstLine = lines.getOrNull(0).orEmpty()
+        val hint = lines.getOrNull(1).orEmpty()
+        val dp = { v: Float -> (v * resources.displayMetrics.density + 0.5f).toInt() }
+        val statusColor = if (isTimeout) 0xFFB45309.toInt() else 0xFF1B7A43.toInt()
+        punchWaitContainer?.removeAllViews()
+        // 第一行：时间(左, weight1) + 状态(右)，中间留白
+        val parts = firstLine.split(" ").filter { it.isNotBlank() }
+        val time = parts.firstOrNull().orEmpty()
+        val status = parts.drop(1).joinToString(" ")
+        punchWaitContainer?.addView(android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            addView(android.widget.TextView(this@DeviceControlActivity).apply {
+                layoutParams = android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                text = time
+                textSize = 15f
+                gravity = android.view.Gravity.START
+                setTypeface(Typeface.DEFAULT_BOLD)
+                setTextColor(statusColor)
+            })
+            addView(android.widget.TextView(this@DeviceControlActivity).apply {
+                text = status
+                textSize = 15f
+                gravity = android.view.Gravity.END
+                setTypeface(Typeface.DEFAULT_BOLD)
+                setTextColor(statusColor)
+            })
+        })
+        // 超时第二行小字提示（居中灰色）
+        if (hint.isNotBlank()) {
+            punchWaitContainer?.addView(android.widget.TextView(this).apply {
+                gravity = android.view.Gravity.CENTER
+                text = hint
+                textSize = 12f
+                setPadding(0, dp(8f), 0, 0)
+                setTextColor(0xFF9E9E9E.toInt())
+            })
         }
         punchWaitDialog?.setTitle("打卡结果")
     }
 
     private var attendanceWaitDialog: androidx.appcompat.app.AlertDialog? = null
-    private var attendanceWaitTextView: android.widget.TextView? = null
+    private var attendanceWaitContainer: android.widget.LinearLayout? = null
     private var attendanceResultPending = false
     private var attendanceTimeoutRunnable: Runnable? = null
 
     /** 考勤记录等待弹窗：resp 数据通常秒级返回，15s 超时兜底；可手动关闭（关闭后数据不再弹窗） */
     private fun showAttendanceWaitingDialog() {
         attendanceResultPending = true
-        val tv = android.widget.TextView(this).apply {
-            gravity = android.view.Gravity.CENTER
-            setPadding(0, (resources.displayMetrics.density * 12).toInt(), 0,
-                (resources.displayMetrics.density * 12).toInt())
-            text = "指令已下发，等待考勤数据…"
-            textSize = 15f
+        val container = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(
+                (resources.displayMetrics.density * 16).toInt(),
+                (resources.displayMetrics.density * 12).toInt(),
+                (resources.displayMetrics.density * 16).toInt(),
+                (resources.displayMetrics.density * 12).toInt()
+            )
+            addView(android.widget.TextView(this@DeviceControlActivity).apply {
+                gravity = android.view.Gravity.CENTER
+                text = "指令已下发，等待考勤数据…"
+                textSize = 15f
+            })
         }
-        attendanceWaitTextView = tv
+        attendanceWaitContainer = container
         attendanceWaitDialog = UnifiedDialogKit.showForm(
             ctx = this,
-            contentView = tv,
+            contentView = container,
             title = "考勤记录",
             positiveText = "关闭",
             negativeText = null,
@@ -1869,8 +1950,13 @@ val calendar = CalendarSnapshot(
             overviewFragment.setActionsBusy(false)
             mainHandler.removeCallbacks(actionBusyResetRunnable)
             pendingActionRid = null
-            attendanceWaitTextView?.text = "等待超时，未收到考勤数据"
-            attendanceWaitTextView?.setTextColor(0xFFB45309.toInt())
+            attendanceWaitContainer?.removeAllViews()
+            attendanceWaitContainer?.addView(android.widget.TextView(this@DeviceControlActivity).apply {
+                gravity = android.view.Gravity.CENTER
+                text = "等待超时，未收到考勤数据"
+                textSize = 14f
+                setTextColor(0xFFB45309.toInt())
+            })
         }
         mainHandler.postDelayed(attendanceTimeoutRunnable!!, 15_000L)
     }
