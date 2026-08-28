@@ -398,34 +398,7 @@
                             android:textSize="11sp" android:textColor="@color/md_onPrimaryContainer" />
                     </LinearLayout>
 
-                    <!-- 考勤记录 -->
-                    <LinearLayout
-                        android:id="@+id/btnActAttendance"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_columnWeight="1"
-                        android:layout_margin="4dp"
-                        android:gravity="center"
-                        android:orientation="vertical"
-                        android:paddingHorizontal="4dp"
-                        android:paddingTop="14dp"
-                        android:paddingBottom="12dp"
-                        android:background="@drawable/bg_action_tile"
-                        android:backgroundTint="@color/md_tertiaryContainer"
-                        android:clickable="true"
-                        android:focusable="true"
-                        android:foreground="?attr/selectableItemBackground">
-                        <ImageView
-                            android:layout_width="24dp"
-                            android:layout_height="24dp"
-                            android:src="@drawable/ic_scan"
-                            app:tint="@color/md_tertiary" android:contentDescription="@null" />
-                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                            android:layout_marginTop="6dp" android:text="考勤记录"
-                            android:textSize="11sp" android:textColor="@color/md_onTertiaryContainer" />
-                    </LinearLayout>
-
-                    <!-- 执行任务 -->
+                    <!-- 执行任务（绿色：启动/正向） -->
                     <LinearLayout
                         android:id="@+id/btnActStart"
                         android:layout_width="0dp"
@@ -438,7 +411,7 @@
                         android:paddingTop="14dp"
                         android:paddingBottom="12dp"
                         android:background="@drawable/bg_action_tile"
-                        android:backgroundTint="@color/brand_purple_container"
+                        android:backgroundTint="@color/md_successContainer"
                         android:clickable="true"
                         android:focusable="true"
                         android:foreground="?attr/selectableItemBackground">
@@ -446,10 +419,10 @@
                             android:layout_width="24dp"
                             android:layout_height="24dp"
                             android:src="@drawable/ic_power"
-                            app:tint="@color/brand_purple" android:contentDescription="@null" />
+                            app:tint="@color/md_success" android:contentDescription="@null" />
                         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
                             android:layout_marginTop="6dp" android:text="执行任务"
-                            android:textSize="11sp" android:textColor="@color/brand_on_purple_container" />
+                            android:textSize="11sp" android:textColor="@color/md_onSuccessContainer" />
                     </LinearLayout>
 
                     <!-- 终止任务（红色） -->
@@ -479,7 +452,34 @@
                             android:textSize="11sp" android:textColor="@color/md_onErrorContainer" />
                     </LinearLayout>
 
-                    <!-- 开启循环 -->
+                    <!-- 考勤记录（蓝灰：数据查看/中性） -->
+                    <LinearLayout
+                        android:id="@+id/btnActAttendance"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_columnWeight="1"
+                        android:layout_margin="4dp"
+                        android:gravity="center"
+                        android:orientation="vertical"
+                        android:paddingHorizontal="4dp"
+                        android:paddingTop="14dp"
+                        android:paddingBottom="12dp"
+                        android:background="@drawable/bg_action_tile"
+                        android:backgroundTint="@color/md_secondaryContainer"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:foreground="?attr/selectableItemBackground">
+                        <ImageView
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:src="@drawable/ic_scan"
+                            app:tint="@color/md_secondary" android:contentDescription="@null" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp" android:text="考勤记录"
+                            android:textSize="11sp" android:textColor="@color/md_onSecondaryContainer" />
+                    </LinearLayout>
+
+                    <!-- 开启循环（青色：流转/持续运行） -->
                     <LinearLayout
                         android:id="@+id/btnActLoopOn"
                         android:layout_width="0dp"
@@ -492,7 +492,7 @@
                         android:paddingTop="14dp"
                         android:paddingBottom="12dp"
                         android:background="@drawable/bg_action_tile"
-                        android:backgroundTint="@color/md_successContainer"
+                        android:backgroundTint="@color/md_tealContainer"
                         android:clickable="true"
                         android:focusable="true"
                         android:foreground="?attr/selectableItemBackground">
@@ -500,13 +500,13 @@
                             android:layout_width="24dp"
                             android:layout_height="24dp"
                             android:src="@drawable/ic_loop"
-                            app:tint="@color/md_success" android:contentDescription="@null" />
+                            app:tint="@color/md_teal" android:contentDescription="@null" />
                         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
                             android:layout_marginTop="6dp" android:text="开启循环"
-                            android:textSize="11sp" android:textColor="@color/md_onSuccessContainer" />
+                            android:textSize="11sp" android:textColor="@color/md_onTealContainer" />
                     </LinearLayout>
 
-                    <!-- 关闭循环 -->
+                    <!-- 关闭循环（橙色：停止循环/警告） -->
                     <LinearLayout
                         android:id="@+id/btnActLoopOff"
                         android:layout_width="0dp"
@@ -519,7 +519,7 @@
                         android:paddingTop="14dp"
                         android:paddingBottom="12dp"
                         android:background="@drawable/bg_action_tile"
-                        android:backgroundTint="@color/md_errorContainer"
+                        android:backgroundTint="@color/md_warningContainer"
                         android:clickable="true"
                         android:focusable="true"
                         android:foreground="?attr/selectableItemBackground">
@@ -527,10 +527,10 @@
                             android:layout_width="24dp"
                             android:layout_height="24dp"
                             android:src="@drawable/ic_loop"
-                            app:tint="@color/md_error" android:contentDescription="@null" />
+                            app:tint="@color/md_warning" android:contentDescription="@null" />
                         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
                             android:layout_marginTop="6dp" android:text="关闭循环"
-                            android:textSize="11sp" android:textColor="@color/md_onErrorContainer" />
+                            android:textSize="11sp" android:textColor="@color/md_onWarningContainer" />
                     </LinearLayout>
                 </GridLayout>
             </LinearLayout>

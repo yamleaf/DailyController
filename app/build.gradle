@@ -4,7 +4,6 @@ import java.util.TimeZone
 
 plugins {
     id 'com.android.application'
-    id 'org.jetbrains.kotlin.android'
     id 'com.google.devtools.ksp' version '2.3.11'
 }
 
@@ -48,12 +47,12 @@ def buildTime = cnFormat('yyyy-MM-dd HH:mm', new Date())
 
 android {
     namespace 'com.yample.daily.controller'
-    compileSdk 36
+    compileSdk 37
 
     defaultConfig {
         applicationId 'com.yample.daily.controller'
         minSdk 26
-        targetSdk 36
+        targetSdk 37
 
         // 版本号策略（对齐被控端 DailyTask/app/build.gradle）：
         // - baselineVersion 为正式发版基线号，随功能迭代手工上调
@@ -123,8 +122,10 @@ android {
             languageVersion = JavaLanguageVersion.of(21)
         }
     }
-    kotlinOptions {
-        jvmTarget = '21'
+    kotlin {
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
+        }
     }
     buildFeatures {
         // AGP 8+ 默认关闭 buildConfig，此处需生成 BuildConfig.BUILD_SOURCE
@@ -132,15 +133,9 @@ android {
         viewBinding true
     }
 
-    // 产物命名（对齐被控端）：dailyController_<构建来源>-<git短哈希>_<构建类型>.apk
-    // 如 dailyController_local-fa96b30_debug.apk / dailyController_ci-abcdef1_release.apk。
-    // 刻意不带版本号：版本号已在 App 内「版本信息」页与 versionName 中可查，
-    // 文件名只承担「这个包从哪来、对应哪次提交」的溯源职责，短而稳定，便于分发与对账。
-    applicationVariants.configureEach { variant ->
-        variant.outputs.configureEach {
-            outputFileName = "dailyController_${buildTag}_${variant.buildType.name}.apk"
-        }
-    }
+    // 产物命名使用 AGP 默认（dailyController-<flavor>-<buildType>.apk），
+    // 版本号已在 App 内「版本信息」页与 versionName 中可查，
+    // 文件名只承担溯源职责，短而稳定，便于分发与对账。
 }
 
 dependencies {
