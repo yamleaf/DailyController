@@ -64,6 +64,20 @@ jobs:
       - name: Build debug APK
         run: ./gradlew assembleDebug --no-daemon
 
+      # ==== 编译工具链版本与支持版本信息（参考 Shizuku app CI 风格）====
+      - name: Show build toolchain versions
+        run: |
+          echo "---- JDK ----"
+          java -version 2>&1
+          echo "---- Gradle (wrapper) ----"
+          grep distributionUrl gradle/wrapper/gradle-wrapper.properties | sed -E 's/.*gradle-([0-9.]+)-bin.*/Gradle version: \1/'
+          echo "---- App SDK targets (app/build.gradle) ----"
+          grep -E "compileSdk|targetSdk|minSdk" app/build.gradle | sed 's/^[[:space:]]*//'
+          echo "---- AGP / Kotlin (build.gradle) ----"
+          grep -E "com.android.application|com.android.library|org.jetbrains.kotlin.android" build.gradle | sed 's/^[[:space:]]*//'
+          echo "---- Installed build-tools ----"
+          ls "$ANDROID_HOME/build-tools" 2>/dev/null || echo "(none)"
+
       # ==== 签名：若定义了 KEY_STORE，用外部密钥覆盖仓库内置 DailyController.jks；
       # 未定义则跳过，build.gradle 回退到内置默认签名 ====
       - name: Apply signing secret (override default jks)
@@ -91,6 +105,16 @@ jobs:
           name: dailyController_release
           path: app/build/outputs/apk/release/*.apk
           retention-days: 10
+
+      # ===== 上传 ProGuard mapping（release 已开启 minify，用于崩溃堆栈反混淆）=====
+      - name: Upload ProGuard mapping
+        if: hashFiles('app/build/outputs/mapping/release/**') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: dailyController_mapping_${{ github.run_number }}
+          path: app/build/outputs/mapping/release
+          retention-days: 30
+          if-no-files-found: ignore
 
       - name: Compute release metadata
         id: meta
