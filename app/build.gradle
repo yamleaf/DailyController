@@ -133,9 +133,16 @@ android {
         viewBinding = true
     }
 
-    // 产物命名使用 AGP 默认（dailyController-<flavor>-<buildType>.apk），
-    // 版本号已在 App 内「版本信息」页与 versionName 中可查，
-    // 文件名只承担溯源职责，短而稳定，便于分发与对账。
+    // 产物命名（AGP 9）：dailyController_<构建来源>-<git短哈希>_<构建类型>.apk
+    // 如 dailyController_local-00995a7_debug.apk / dailyController_ci-abcdef1_release.apk；
+    // 版本号已在 App 内「版本信息」页与 versionName 中可查，文件名只承担溯源职责。
+    androidComponents {
+        onVariants(selector().all()) { variant ->
+            variant.outputs.forEach { output ->
+                output.outputFileName.set("dailyController_${buildTag}_${variant.name}.apk")
+            }
+        }
+    }
 }
 
 dependencies {
