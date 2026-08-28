@@ -184,7 +184,6 @@ class OverviewFragment : Fragment(), SnapshotFragment {
                 }
                 binding.tvSnapshotHint.setTextColor(requireContext().getColor(R.color.md_error))
             }
-            else -> {}
         }
     }
 

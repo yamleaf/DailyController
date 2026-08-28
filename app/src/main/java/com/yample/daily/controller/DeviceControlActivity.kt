@@ -432,10 +432,8 @@ private fun setupControllerNav() {
         }
 
         // 用 MqttCallbackExtended：在（重连）connectComplete 中重新订阅并视情况补发配对，
-        // 解决「重连后订阅丢失导致永远收不到 PA/快照」的问题。
-        // 注意：初始连接的订阅 + 发配对放在 connect() 之后直接执行（见下方 try 块），
-        // 不依赖 connectComplete 是否在初始连接触发——部分 Paho 版本初始连接不回调 connectComplete，
-        // 若只在此处处理，会出现"已连接但从未订阅/发配对、永远配对中"的回归。
+        // 解决「重连后订阅丢失导致永远收不到 PA/快照」。初始连接不依赖该回调——
+        // 部分 Paho 版本初始连接不回调 connectComplete，故 connect() 后仍会直接订阅+发配对。
         mqttClient?.setCallback(object : MqttCallbackExtended {
             override fun connectComplete(reconnect: Boolean, serverURI: String?) {
                 MqttQuota.onConnect(this@DeviceControlActivity)
@@ -1755,12 +1753,8 @@ val calendar = CalendarSnapshot(
                 mqttClient?.publish("${MqttPacket.TOPIC_PREFIX}/${device.deviceId}/cmd",
                     MqttMessage(gson.toJson(packet).toByteArray()).apply { qos = 1 })
                 bumpQuota(1, 0)
-                // 注意：这里刻意不调 sendQuery()。
-                // 早前版本在此直接查询，反而制造了竞态：它会占用 sendQuery 的并发槽位
-                // (queryPendingRid)，使随后 ACK 里那次「真正有效」的刷新被并发守护吞掉；
-                // 且这次查询的快照是被控端收到 query 那一刻生成的，早于 startTask 落地 = 旧状态。
-                // 正确路径只有一条：被控端 START/STOP 本就会 publishPush(statuses/runtime/tasks)
-                // 主动推增量，控制端 onPush 按 delta 覆盖合并本地缓存并刷新 UI，不再额外查全量。
+                // 刻意不调 sendQuery()：早前在此查询会占用 sendQuery 并发槽位（queryPendingRid）且快照早于任务落地=旧状态。
+                // 正确路径只一条：被控端 START/STOP 会主动推增量 statuses/runtime/tasks，onPush 按 delta 合并刷新。
                 runOnUiThread {
                     Toast.makeText(this@DeviceControlActivity, "已发送动作：$label", Toast.LENGTH_SHORT).show()
                     // 结果型操作弹等待反馈窗（结果回传时关闭等待窗并弹结果）
