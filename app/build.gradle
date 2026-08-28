@@ -46,13 +46,13 @@ def cnFormat = { String pattern, Date date ->
 def buildTime = cnFormat('yyyy-MM-dd HH:mm', new Date())
 
 android {
-    namespace 'com.yample.daily.controller'
-    compileSdk 37
+    namespace = 'com.yample.daily.controller'
+    compileSdk = 37
 
     defaultConfig {
         applicationId 'com.yample.daily.controller'
-        minSdk 26
-        targetSdk 37
+        minSdk = 26
+        targetSdk = 37
 
         // 版本号策略（对齐被控端 DailyTask/app/build.gradle）：
         // - baselineVersion 为正式发版基线号，随功能迭代手工上调
@@ -86,13 +86,13 @@ android {
             def ymd = cnFormat('yyMMdd', now).toInteger()
             def hh = cnFormat('HH', now).toInteger()
             def mm = cnFormat('mm', now).toInteger()
-            versionName gitShort
-            versionCode ymd * 1000 + 720 + (hh * 30 + (int) (mm / 2))
+            versionName = gitShort
+            versionCode = ymd * 1000 + 720 + (hh * 30 + (int) (mm / 2))
         } else {
             // 正式发版：CI 产物保持干净版本号；本机手工打的「正式包」强制带 -local 后缀，
             // 避免本地包被误当成正式发布包分发出去。
-            versionCode 100
-            versionName buildSource == 'ci' ? baselineVersion : "${baselineVersion}-local"
+            versionCode = 100
+            versionName = buildSource == 'ci' ? baselineVersion : "${baselineVersion}-local"
         }
     }
 
@@ -109,7 +109,7 @@ android {
         release {
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            signingConfig signingConfigs.release
+            signingConfig = signingConfigs.release
         }
     }
     compileOptions {
@@ -129,8 +129,8 @@ android {
     }
     buildFeatures {
         // AGP 8+ 默认关闭 buildConfig，此处需生成 BuildConfig.BUILD_SOURCE
-        buildConfig true
-        viewBinding true
+        buildConfig = true
+        viewBinding = true
     }
 
     // 产物命名使用 AGP 默认（dailyController-<flavor>-<buildType>.apk），
@@ -140,7 +140,7 @@ android {
 
 dependencies {
     implementation project(':protocol')
-    implementation 'androidx.core:core-ktx:1.18.0'
+    implementation 'androidx.core:core-ktx:1.19.0'
     implementation 'androidx.appcompat:appcompat:1.7.1'
     implementation 'com.google.android.material:material:1.14.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.2.0'
