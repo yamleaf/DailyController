@@ -22,4 +22,7 @@ interface ServerlessBackendDao {
 
     @Delete
     suspend fun delete(backend: ServerlessBackend)
+
+    @Query("DELETE FROM serverless_backends")
+    suspend fun clearAll()
 }

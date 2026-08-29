@@ -5,17 +5,28 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import com.yample.daily.controller.databinding.ActivityAppSettingsBinding
 import com.yample.mqttprotocol.ThemeManager
 import com.yample.mqttprotocol.dialog.UnifiedDialogKit
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * 控制端 app 级设置页：主题外观 / 离线通知 / 版本信息等。
@@ -27,6 +38,19 @@ class AppSettingsActivity : AppCompatActivity() {
     private val notifyPermission = android.Manifest.permission.POST_NOTIFICATIONS
     private val REQ_NOTIFY = 1001
 
+    /** 导出前等待用户确认的口令（确认后交给 CreateDocument 回调使用） */
+    private var pendingExportPass: String? = null
+
+    private val createDoc = registerForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        val pass = pendingExportPass ?: return@registerForActivityResult
+        pendingExportPass = null
+        if (uri != null) doExport(uri, pass)
+    }
+
+    private val pickDoc = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) askImportPassphrase(uri)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityAppSettingsBinding.inflate(layoutInflater)
@@ -37,6 +61,8 @@ class AppSettingsActivity : AppCompatActivity() {
 
         binding.rowTheme.setOnClickListener { showThemeChooser() }
         binding.rowVersion.setOnClickListener { showVersionInfo() }
+        binding.rowExport.setOnClickListener { startExport() }
+        binding.rowImport.setOnClickListener { startImport() }
         // 设置页版本行副标题：只显示 git 短哈希，其余构建信息进弹窗
         binding.tvVersionSummary.text = BuildConfig.GIT_SHA
 
@@ -82,6 +108,166 @@ class AppSettingsActivity : AppCompatActivity() {
         OfflineMonitorService.setEnabled(this, true)
         OfflineMonitorService.startCompat(this)
         Toast.makeText(this, "设备通知已开启：告警会话缓存约 2 小时内可补收", Toast.LENGTH_SHORT).show()
+    }
+
+    // ===================== 数据备份（导出/导入） =====================
+
+    /** 导出：先设置口令，再选择保存位置 */
+    private fun startExport() {
+        showPassphraseDialog(
+            title = "设置导出口令",
+            hintText = "用于加密备份，导入时需再次输入（请记牢）",
+            confirmText = "下一步",
+            minLength = 4
+        ) { pass ->
+            pendingExportPass = pass
+            val stamp = SimpleDateFormat("yyyyMMdd_HHmm", Locale.CHINA).format(Date())
+            createDoc.launch("dailycontroller_backup_${stamp}.dcb")
+        }
+    }
+
+    /** 导出执行：收集数据 + 加密 + 写入 SAF 选定文件 */
+    private fun doExport(uri: Uri, pass: String) {
+        lifecycleScope.launch {
+            val (ok, msg) = withContext(Dispatchers.IO) {
+                runCatching {
+                    val binary = BackupManager.export(this@AppSettingsActivity, pass)
+                    val out = contentResolver.openOutputStream(uri)
+                        ?: throw IllegalStateException("无法写入所选文件")
+                    BackupManager.writeTo(binary, out)
+                }.fold(
+                    onSuccess = { true to "备份已导出" },
+                    onFailure = { false to ("导出失败：${it.message}") }
+                )
+            }
+            if (ok) {
+                UnifiedDialogKit.showSuccess(this@AppSettingsActivity, "导出成功", msg)
+            } else {
+                UnifiedDialogKit.showInfo(this@AppSettingsActivity, "导出失败", msg)
+            }
+        }
+    }
+
+    /** 导入：先警告覆盖，再选文件 */
+    private fun startImport() {
+        UnifiedDialogKit.showWarning(
+            ctx = this,
+            title = "导入备份",
+            message = "导入将覆盖当前全部设备、后台配置与设置，且立即生效。确定继续吗？",
+            confirmText = "继续",
+            onConfirm = {
+                pickDoc.launch(arrayOf("application/octet-stream", "*/*"))
+            }
+        )
+    }
+
+    /** 选择备份文件后输入口令 */
+    private fun askImportPassphrase(uri: Uri) {
+        showPassphraseDialog(
+            title = "输入导出时设置的口令",
+            hintText = "口令错误将无法解密备份文件",
+            confirmText = "恢复"
+        ) { pass ->
+            doImport(uri, pass)
+        }
+    }
+
+    /** 导入执行：解密 + 覆盖恢复 + 重启离线监测 */
+    private data class ImportOutcome(val ok: Boolean, val msg: String, val needRepair: Boolean)
+
+    private fun readAllBytes(uri: Uri): ByteArray {
+        contentResolver.openFileDescriptor(uri, "r")?.use { fd ->
+            return java.io.FileInputStream(fd.fileDescriptor).use { it.readBytes() }
+        }
+        contentResolver.openInputStream(uri)?.use { return it.readBytes() }
+        throw IllegalStateException("无法读取备份文件")
+    }
+
+    private fun doImport(uri: Uri, pass: String) {
+        lifecycleScope.launch {
+            val outcome = withContext(Dispatchers.IO) {
+                runCatching {
+                    Log.e("BackupImport", "uri=$uri")
+                    val binary = readAllBytes(uri)
+                    BackupManager.import(this@AppSettingsActivity, binary, pass)
+                }.fold(
+                    onSuccess = { r -> ImportOutcome(true, "已恢复 ${r.restored} 台设备", r.needRepair) },
+                    onFailure = {
+                        Log.e("BackupImport", "import failed", it)
+                        ImportOutcome(false, it.message ?: "导入失败", false)
+                    }
+                )
+            }
+            if (outcome.ok) {
+                OfflineMonitorService.stopCompat(this@AppSettingsActivity)
+                if (OfflineMonitorService.isEnabled(this@AppSettingsActivity)) {
+                    OfflineMonitorService.startCompat(this@AppSettingsActivity)
+                }
+                if (outcome.needRepair) {
+                    UnifiedDialogKit.showConfirm(
+                        ctx = this@AppSettingsActivity,
+                        title = "导入成功",
+                        message = "${outcome.msg}\n此备份来自另一台手机，设备会话已失效，需重新扫码配对后才能控制。",
+                        confirmText = "知道了",
+                        cancelText = null
+                    )
+                } else {
+                    UnifiedDialogKit.showSuccess(this@AppSettingsActivity, "导入成功", "${outcome.msg}\n设备会话已完整恢复，可立即使用。")
+                }
+            } else {
+                UnifiedDialogKit.showInfo(
+                    this@AppSettingsActivity,
+                    "导入失败",
+                    outcome.msg,
+                    buttonText = "知道了"
+                )
+            }
+        }
+    }
+
+    /** 通用口令输入弹窗（密码框，非明文展示） */
+    private fun showPassphraseDialog(
+        title: String,
+        hintText: String,
+        confirmText: String,
+        minLength: Int = 0,
+        onConfirm: (String) -> Unit
+    ) {
+        val input = EditText(this).apply {
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+            hint = if (hintText.isEmpty()) "输入口令" else hintText
+            setPadding(16, 12, 16, 12)
+            setTextColor(resources.getColor(R.color.md_onSurface, theme))
+            setHintTextColor(resources.getColor(R.color.md_onSurfaceVariant, theme))
+            textSize = 15f
+        }
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(40, 8, 40, 8)
+            addView(input, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ))
+        }
+        UnifiedDialogKit.showForm(
+            ctx = this,
+            contentView = container,
+            title = title,
+            positiveText = confirmText,
+            onShow = { _, _, _ -> input.requestFocus() },
+            onConfirm = {
+                val pass = input.text?.toString().orEmpty()
+                if (pass.length < minLength) {
+                    if (minLength > 0) {
+                        Toast.makeText(this, "口令长度至少 $minLength 位", Toast.LENGTH_SHORT).show()
+                        return@showForm false
+                    }
+                }
+                onConfirm(pass)
+                true
+            }
+        )
     }
 
     private fun refreshThemeValue() {
