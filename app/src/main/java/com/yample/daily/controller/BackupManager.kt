@@ -192,7 +192,7 @@ object BackupManager {
                 "long" -> ed.putLong(e.k, num?.toLong() ?: 0L)
                 "int" -> ed.putInt(e.k, num?.toInt() ?: 0)
                 "float" -> ed.putFloat(e.k, num?.toFloat() ?: 0f)
-                "stringset" -> ed.putStringSet(e.k, (e.v as? List<String>)?.toSet())
+                "stringset" -> @Suppress("UNCHECKED_CAST") ed.putStringSet(e.k, (e.v as? List<String>)?.toSet())
             }
         }
         ed.apply()
