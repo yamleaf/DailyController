@@ -1,0 +1,301 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/md_surface"
+    android:orientation="vertical">
+
+    <!-- 标题栏 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="16dp">
+
+        <TextView
+            android:id="@+id/btnShizukuBack"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:padding="8dp"
+            android:text="‹ 返回"
+            android:textColor="@color/md_primary"
+            android:textSize="16sp" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="end"
+            android:text="Shizuku 高级设置"
+            android:textColor="@color/md_onSurface"
+            android:textSize="17sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/md_outlineVariant" />
+
+    <androidx.core.widget.NestedScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <!-- 状态镜像卡 -->
+            <com.google.android.material.card.MaterialCardView
+                style="@style/SectionCard">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="14dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="被控端状态"
+                        android:textColor="@color/md_primary"
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/txtSzEnabled"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="高级功能：未知"
+                        android:textColor="@color/md_onSurface"
+                        android:textSize="14sp" />
+
+                    <TextView
+                        android:id="@+id/txtSzMethod"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="登录方式：未知"
+                        android:textColor="@color/md_onSurface"
+                        android:textSize="14sp" />
+
+                    <TextView
+                        android:id="@+id/txtSzSteps"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="登录步骤：未知"
+                        android:textColor="@color/md_onSurface"
+                        android:textSize="14sp" />
+
+                    <TextView
+                        android:id="@+id/txtSzAuth"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="身份验证步骤：未知"
+                        android:textColor="@color/md_onSurface"
+                        android:textSize="14sp" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="密码仅在设置时显隐，此处仅显示「已设置/未设置」，修改请在被控端完成"
+                        android:textColor="@color/md_onSurfaceVariant"
+                        android:textSize="11sp" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- 配置编辑卡 -->
+            <com.google.android.material.card.MaterialCardView
+                style="@style/SectionCard"
+                android:layout_marginTop="12dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="14dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="镜像配置（下发到被控端）"
+                        android:textColor="@color/md_primary"
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:text="登录方式"
+                        android:textColor="@color/md_onSurfaceVariant"
+                        android:textSize="13sp" />
+
+                    <RadioGroup
+                        android:id="@+id/radioMethod"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal">
+
+                        <RadioButton
+                            android:id="@+id/radioPassword"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="密码登录" />
+
+                        <RadioButton
+                            android:id="@+id/radioVerifyCode"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="验证码登录" />
+                    </RadioGroup>
+
+                    <TextView
+                        android:id="@+id/txtPasswordMirror"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="密码：未设置（请在被控端高级设置中设置）"
+                        android:textColor="@color/md_onSurfaceVariant"
+                        android:textSize="12sp" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:text="登录步骤按钮文字（逗号分隔，按顺序点击）"
+                        android:textColor="@color/md_onSurfaceVariant"
+                        android:textSize="13sp" />
+
+                    <EditText
+                        android:id="@+id/etLoginSteps"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:hint="如：登录,下一步,确认"
+                        android:inputType="text"
+                        android:textColor="@color/md_onSurface"
+                        android:textSize="14sp" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:text="验证码等待（秒）"
+                        android:textColor="@color/md_onSurfaceVariant"
+                        android:textSize="13sp" />
+
+                    <EditText
+                        android:id="@+id/etVerifyWait"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:hint="10~600"
+                        android:inputType="number"
+                        android:textColor="@color/md_onSurface"
+                        android:textSize="14sp" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:text="身份验证步骤按钮文字（逗号分隔）"
+                        android:textColor="@color/md_onSurfaceVariant"
+                        android:textSize="13sp" />
+
+                    <EditText
+                        android:id="@+id/etAuthSteps"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:hint="如：去验证,确认"
+                        android:inputType="text"
+                        android:textColor="@color/md_onSurface"
+                        android:textSize="14sp" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:text="身份验证验证码等待（秒）"
+                        android:textColor="@color/md_onSurfaceVariant"
+                        android:textSize="13sp" />
+
+                    <EditText
+                        android:id="@+id/etAuthWait"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:hint="10~600"
+                        android:inputType="number"
+                        android:textColor="@color/md_onSurface"
+                        android:textSize="14sp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnSaveShizukuConfig"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="14dp"
+                        android:text="保存并下发配置"
+                        android:textSize="14sp" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- 操作按钮卡 -->
+            <com.google.android.material.card.MaterialCardView
+                style="@style/SectionCard"
+                android:layout_marginTop="12dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="14dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="操作"
+                        android:textColor="@color/md_primary"
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="下发后：被控端跳转打卡应用，判定页面类型（非目标页则跳过退回主界面），按步骤自动点击并反馈结果"
+                        android:textColor="@color/md_onSurfaceVariant"
+                        android:textSize="11sp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnManualLogin"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:text="手动登录"
+                        android:textSize="14sp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnIdentityVerify"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="身份验证"
+                        android:textSize="14sp" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
+</LinearLayout>

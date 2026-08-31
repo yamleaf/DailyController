@@ -37,6 +37,9 @@ class SettingsFragment : Fragment(), SnapshotFragment {
     /** 需求 1：消息渠道枚举（mc：0-邮件，1-企业微信） */
     var onChannelChange: ((Int) -> Unit)? = null
 
+    /** feat_shiziku：点击「Shizuku 高级设置」入口（由宿主打开镜像配置页） */
+    var onShizukuClick: (() -> Unit)? = null
+
     companion object {
         /** 由「消息渠道」卡片单独承载的字段，不在通用设置列表里重复渲染 */
         private val MSG_KEYS = setOf("mc", "mt", "em", "ei", "wk", "ea")
@@ -82,6 +85,7 @@ class SettingsFragment : Fragment(), SnapshotFragment {
         // 适配器可能在禁用标志设置之后才创建（视图懒加载），创建后立即应用
         settingAdapter.commandsEnabled = commandsEnabled
         binding.btnEditMsgChannel.setOnClickListener { if (commandsEnabled) showMsgChannelDialog() }
+        binding.btnOpenShizuku.setOnClickListener { if (commandsEnabled) onShizukuClick?.invoke() }
         snapshot?.let { render(it) }
     }
 

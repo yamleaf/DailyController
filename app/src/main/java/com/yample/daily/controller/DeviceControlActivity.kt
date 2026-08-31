@@ -191,6 +191,7 @@ class DeviceControlActivity : AppCompatActivity() {
         private const val TAG_CALENDAR = "calendar"
         private const val TAG_SETTINGS = "settings"
         private const val TAG_DEVICE = "device"
+        private const val TAG_SHIZUKU = "shizuku"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -306,6 +307,8 @@ initFragments()
                 )
             }
             onChannelChange = { v -> sendUpdate(Protocol.FIELD_MSG_CHANNEL, PacketValue.IntValue(v)) }
+            // feat_shiziku：Shizuku 高级设置镜像入口
+            onShizukuClick = { openShizukuSettings() }
         }
         deviceFragment = DeviceFragment().apply {
             // 已绑定：解绑设备（下发 UB）；未绑定：删除设备（清本地记录回列表）
@@ -1485,6 +1488,18 @@ private fun setupControllerNav() {
                     overviewFragment.refreshAlerts(AlertHistory.load(this, device.deviceId))
                     return@runOnUiThread
                 }
+                // feat_shiziku：被控端请求短信验证码 → 弹输入框回填下发
+                if (record.type == Protocol.ALERT_TYPE_VERIFY_CODE_REQUEST) {
+                    showVerifyCodeRequestDialog(record.msg)
+                    overviewFragment.refreshAlerts(AlertHistory.load(this, device.deviceId))
+                    return@runOnUiThread
+                }
+                // feat_shiziku：手动登录 / 身份验证结果反馈 → 弹窗
+                if (record.type == Protocol.ALERT_TYPE_LOGIN_RESULT || record.type == Protocol.ALERT_TYPE_VERIFY_RESULT) {
+                    showAlertDialog(record)
+                    overviewFragment.refreshAlerts(AlertHistory.load(this, device.deviceId))
+                    return@runOnUiThread
+                }
                 showAlertDialog(record)
                 overviewFragment.refreshAlerts(AlertHistory.load(this, device.deviceId))
             }
@@ -1717,6 +1732,58 @@ val calendar = CalendarSnapshot(
                 }
             }
         }
+    }
+
+    // ===================== Shizuku 高级设置（feat_shiziku）=====================
+    /** 打开 Shizuku 高级设置镜像页（覆盖式 Fragment，返回键退出） */
+    fun openShizukuSettings() {
+        val ft = supportFragmentManager.beginTransaction()
+        ft.add(R.id.fragmentContainer, ShizukuSettingsFragment(), TAG_SHIZUKU)
+        ft.addToBackStack(TAG_SHIZUKU)
+        ft.commit()
+    }
+
+    /** 下发 Shizuku 动作（手动登录 / 身份验证） */
+    fun sendShizukuAction(action: String) = sendAction(action)
+
+    /** 下发 Shizuku 镜像配置（不含密码明文；密码仅被控端本地设置） */
+    fun sendShizukuConfig(json: String) =
+        sendUpdate(Protocol.FIELD_SHIZUKU_CONFIG, PacketValue.StringValue(json))
+
+    /** 从快照缓存提取 Shizuku 镜像摘要（sz_* 设置项），供镜像页展示 */
+    fun shizukuMirrorSummary(): Map<String, String> {
+        val raw = prefs.getString("snapshot_cache_${device.deviceId}", null) ?: return emptyMap()
+        return runCatching {
+            val root = JsonParser.parseString(raw).asJsonObject
+            val arr = root.getAsJsonArray("settings") ?: return@runCatching emptyMap()
+            arr.mapNotNull { o ->
+                val obj = o.asJsonObject
+                val key = obj.get("key").asString
+                if (key.startsWith("sz_")) key to obj.get("value").asString else null
+            }.toMap()
+        }.getOrDefault(emptyMap())
+    }
+
+    /** 被控端请求短信验证码 → 弹输入框 → FIELD_VERIFY_CODE 回填下发 */
+    private fun showVerifyCodeRequestDialog(msg: String) {
+        val input = android.widget.EditText(this).apply {
+            hint = "输入短信验证码"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+        }
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("验证码请求")
+            .setMessage(msg)
+            .setView(input)
+            .setPositiveButton("下发") { _, _ ->
+                val code = input.text.toString().trim()
+                if (code.isBlank()) {
+                    Toast.makeText(this, "验证码不能为空", Toast.LENGTH_SHORT).show()
+                } else {
+                    sendUpdate(Protocol.FIELD_VERIFY_CODE, PacketValue.StringValue(code))
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     // ===================== 一次性动作指令 =====================
