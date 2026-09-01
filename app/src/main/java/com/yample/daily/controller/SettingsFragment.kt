@@ -41,10 +41,16 @@ class SettingsFragment : Fragment(), SnapshotFragment {
     var onShizukuClick: (() -> Unit)? = null
 
     companion object {
-        /** 由「消息渠道」卡片单独承载的字段，不在通用设置列表里重复渲染 */
+/** 由「消息渠道」卡片单独承载的字段，不在通用设置列表里重复渲染 */
         private val MSG_KEYS = setOf("mc", "mt", "em", "ei", "wk", "ea")
-        /** 「任务每日循环」已移至概览页快捷操作（开启循环 / 关闭循环），不再在设置列表渲染 */
+        /** 「任务每日循环」已移至概览页快捷操作（开启循环/关闭循环），不再在设置列表渲染 */
         private val HIDDEN_KEYS = setOf("ar")
+        /** feat_shiziku：Sz 高级设置字段由「高级设置」子页承载，不在通用设置列表渲染 */
+        private val SHIZUKU_KEYS = setOf(
+            "sz_status", "sz_granted", "sz_enabled", "sz_method",
+            "sz_pwdSteps", "sz_verifySteps", "sz_authStepsCount",
+            "sz_hasPassword", "sz_verifyWait", "sz_authWait"
+        )
 
         /** 设置项按功能分组：每组一个 section header + 属于该组的 setting keys */
         private val SETTING_GROUPS = linkedMapOf(
@@ -98,7 +104,7 @@ class SettingsFragment : Fragment(), SnapshotFragment {
         settingItems.clear()
         // 按功能分组构建设置列表
         val settingMap = s.settings
-            .filter { it.key !in MSG_KEYS && it.key !in HIDDEN_KEYS }
+            .filter { it.key !in MSG_KEYS && it.key !in HIDDEN_KEYS && it.key !in SHIZUKU_KEYS }
             .associateBy { it.key }
         SETTING_GROUPS.forEach { (groupName, keys) ->
             val items = keys.mapNotNull { settingMap[it] }
@@ -110,7 +116,7 @@ class SettingsFragment : Fragment(), SnapshotFragment {
         // 不在任何分组中的独立设置项，归入「其他」
         val groupedKeys = SETTING_GROUPS.values.flatten().toSet()
         val ungrouped = s.settings
-            .filter { it.key !in MSG_KEYS && it.key !in HIDDEN_KEYS && it.key !in groupedKeys }
+            .filter { it.key !in MSG_KEYS && it.key !in HIDDEN_KEYS && it.key !in SHIZUKU_KEYS && it.key !in groupedKeys }
         if (ungrouped.isNotEmpty()) {
             settingItems.add(SettingListItem.Header("其他"))
             ungrouped.forEach { settingItems.add(SettingListItem.Item(it)) }

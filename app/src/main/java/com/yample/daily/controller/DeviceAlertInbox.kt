@@ -133,6 +133,39 @@ object DeviceAlertInbox {
                 title = "📲 手动打卡结果"
                 from
             }
+            Protocol.ALERT_TYPE_VERIFY_CODE_REQUEST -> {
+                // Shizuku：请求验证码输入回填；msg 为被控端原始 JSON，弹窗需按字段解析
+                val raw = obj.get("msg")?.asString ?: ""
+                title = "📩 验证码输入"
+                raw
+            }
+            Protocol.ALERT_TYPE_SMS_CAPTURE -> {
+                // Shizuku：钉钉短信采集（内容+收件人）；msg 为被控端原始 JSON，弹窗需按字段解析
+                val raw = obj.get("msg")?.asString ?: ""
+                title = "📲 发送短信验证"
+                raw
+            }
+            Protocol.ALERT_TYPE_RESULT_SCREENSHOT -> {
+                // Shizuku：结果判定截图已回传，等待人工确认；msg 为被控端原始 JSON
+                val raw = obj.get("msg")?.asString ?: ""
+                title = "🔍 结果确认"
+                raw
+            }
+            Protocol.ALERT_TYPE_LOGIN_RESULT -> {
+                val from = obj.get("msg")?.asString ?: "登录结果"
+                title = "🔐 登录结果"
+                from
+            }
+            Protocol.ALERT_TYPE_VERIFY_RESULT -> {
+                val from = obj.get("msg")?.asString ?: "验证结果"
+                title = "🛡️ 验证结果"
+                from
+            }
+            Protocol.ALERT_TYPE_SIMULATE_PUNCH_RESULT -> {
+                val from = obj.get("msg")?.asString ?: "模拟打卡结果"
+                title = "🕐 模拟打卡结果"
+                from
+            }
             Protocol.ALERT_TYPE_TASK_START -> {
                 val from = obj.get("msg")?.asString ?: "远程启动任务"
                 title = "▶️ 任务已启动"

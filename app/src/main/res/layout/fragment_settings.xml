@@ -116,7 +116,7 @@
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
-        <!-- feat_shiziku：Shizuku 高级设置镜像入口（登录/身份验证配置 + 手动登录/身份验证） -->
+        <!-- feat_shiziku：高级设置入口（登录/身份验证配置 + 手动登录/身份验证），置于消息渠道卡片之下 -->
         <com.google.android.material.card.MaterialCardView
             android:id="@+id/cardShizuku"
             style="@style/SectionCard">
@@ -138,7 +138,7 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:text="Shizuku 高级设置"
+                        android:text="高级设置"
                         android:textColor="@color/md_onSurface"
                         android:textSize="15sp"
                         android:textStyle="bold" />
@@ -161,7 +161,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
-                    android:text="镜像登录/身份验证配置，下发手动登录与身份验证；需被控端 Shizuku 高级功能开启"
+                    android:text="手动登录 / 身份验证等高级能力；需被控端 Shizuku 服务可用且已授权"
                     android:textColor="@color/md_onSurfaceVariant"
                     android:textSize="11sp" />
             </LinearLayout>

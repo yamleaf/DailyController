@@ -4,25 +4,34 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.TextView
 import android.widget.Toast
 import androidx.fragment.app.Fragment
-import com.google.gson.JsonArray
+import androidx.core.content.ContextCompat
 import com.google.gson.JsonObject
 import com.yample.daily.controller.databinding.FragmentShizukuSettingsBinding
 import com.yample.mqttprotocol.Protocol
 
 /**
- * Shizuku 高级设置镜像页（feat_shiziku，独立文件）。
+ * Shizuku 高级设置镜像页（feat_shiziku，设备详情子 tab，入口在设置 tab，独立文件）。
  *
- * - 状态卡：展示被控端快照上报的 Shizuku 配置摘要（sz_*，只读）。
- * - 配置编辑：登录方式 / 登录步骤 / 验证码等待 / 身份验证步骤 / 等待，
- *   保存后经 FIELD_SHIZUKU_CONFIG 下发到被控端（**不含密码明文**，密码仅被控端本地设置）。
- * - 操作：手动登录 / 身份验证（经 CMD_ACTION 下发，结果经 alert 通道回弹）。
+ * 三大块（风格与 DC 整体一致，服务状态胶囊化）：
+ *  - 服务权限状态区：被控端快照 sz_status / sz_granted，胶囊 chip 只读。
+ *  - 操作区：手动登录 / 身份验证 / 模拟打卡（并列按钮）。
+ *  - 配置区：登录方式 / 验证码超时（可配置下发）；登录步骤与身份验证步骤**只读展示**，
+ *    由被控端本地维护，控制端不编辑不下发（密码亦不落网络）。
+ *
+ * 可用性：仅当被控端服务可用且已授权（sz_granted=已授权）时，操作与配置才可下发（授权即开启，无独立开关）。
  */
-class ShizukuSettingsFragment : Fragment() {
+class ShizukuSettingsFragment : Fragment(), SnapshotFragment {
 
     private var _binding: FragmentShizukuSettingsBinding? = null
     private val binding get() = _binding!!
+
+    private var snapshot: DeviceSnapshot? = null
+
+    /** 解绑态禁用（由宿主统一控制；恢复后 render 还原） */
+    private var commandsEnabled = true
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentShizukuSettingsBinding.inflate(inflater, container, false)
@@ -31,13 +40,11 @@ class ShizukuSettingsFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        binding.btnShizukuBack.setOnClickListener {
-            parentFragmentManager.popBackStack()
-        }
-        binding.btnSaveShizukuConfig.setOnClickListener { saveConfig() }
-        binding.btnManualLogin.setOnClickListener { sendAction(Protocol.ACTION_MANUAL_LOGIN) }
-        binding.btnIdentityVerify.setOnClickListener { sendAction(Protocol.ACTION_IDENTITY_VERIFY) }
-        renderMirror()
+        binding.btnSaveShizukuConfig.setOnClickListener { if (editable()) saveConfig() }
+        binding.btnManualLogin.setOnClickListener { if (editable()) sendAction(Protocol.ACTION_MANUAL_LOGIN) }
+        binding.btnIdentityVerify.setOnClickListener { if (editable()) sendAction(Protocol.ACTION_IDENTITY_VERIFY) }
+        binding.btnSimulatePunch.setOnClickListener { if (editable()) sendAction(Protocol.ACTION_SIMULATE_PUNCH) }
+        snapshot?.let { render(it) }
     }
 
     override fun onDestroyView() {
@@ -45,53 +52,99 @@ class ShizukuSettingsFragment : Fragment() {
         _binding = null
     }
 
-    /** 从宿主读取快照摘要并渲染只读状态卡 */
-    private fun renderMirror() {
-        val act = activity as? DeviceControlActivity ?: return
-        val s = act.shizukuMirrorSummary()
-        binding.txtSzEnabled.text = "高级功能：${if (s["sz_enabled"] == "true") "已开启" else "未开启"}"
-        binding.txtSzMethod.text = "登录方式：${s["sz_method"] ?: "未知"}"
-        binding.txtSzSteps.text = "登录步骤：${s["sz_steps"] ?: "未知"}"
-        binding.txtSzAuth.text = "身份验证步骤：${s["sz_auth"] ?: "未知"}"
-        binding.txtPasswordMirror.text = if (s["hasPassword"] == null) {
-            "密码：状态未知（请在被控端高级设置中设置）"
-        } else {
-            "密码：${if (s["hasPassword"] == "true") "已设置" else "未设置"}（修改请在被控端完成）"
-        }
-        // 登录方式回显
-        binding.radioPassword.isChecked = s["sz_method"] != "验证码登录"
-        binding.radioVerifyCode.isChecked = s["sz_method"] == "验证码登录"
+    override fun refresh(snapshot: DeviceSnapshot) {
+        this.snapshot = snapshot
+        if (isAdded && _binding != null) render(snapshot)
     }
 
-    /** 组装配置 JSON 下发（不含密码） */
+    /** 解绑态统一禁用（由宿主在设备未绑定时调用） */
+    fun setCommandsEnabled(enabled: Boolean) {
+        commandsEnabled = enabled
+        val s = snapshot ?: return
+        if (_binding != null) render(s)
+    }
+
+    /** 服务可用 + 已授权 且 未解绑 → 操作/配置可用（授权即开启，无独立开关） */
+    private fun editable(): Boolean =
+        commandsEnabled && strOf("sz_granted") == "已授权"
+
+    private fun settingOf(key: String): SettingItem? = snapshot?.settings?.firstOrNull { it.key == key }
+
+    private fun strOf(key: String): String = settingOf(key)?.value?.toString().orEmpty()
+
+    private fun render(s: DeviceSnapshot) {
+        val service = strOf("sz_status").ifBlank { "未知" }
+        val granted = strOf("sz_granted").ifBlank { "未知" }
+
+        binding.txtSzService.text = "服务：$service"
+        binding.txtSzGranted.text = "授权：$granted"
+        chipColor(binding.txtSzService, service == "可用")
+        chipColor(binding.txtSzGranted, granted == "已授权")
+
+        // 登录方式回显
+        val method = strOf("sz_method")
+        binding.radioPassword.isChecked = method != "验证码登录"
+        binding.radioVerifyCode.isChecked = method == "验证码登录"
+        binding.txtPasswordMirror.text = "密码:${if (strOf("sz_hasPassword") == "true") "已设置" else "未设置"}（修改请在被控端完成）"
+
+        // 超时回显（供编辑下发）
+        val verifyWait = settingOf("sz_verifyWait")?.value?.toString().orEmpty()
+        if (verifyWait.isNotBlank()) binding.etVerifyWait.setText(verifyWait)
+        val authWait = settingOf("sz_authWait")?.value?.toString().orEmpty()
+        if (authWait.isNotBlank()) binding.etAuthWait.setText(authWait)
+
+        // 步骤只读展示（来自快照，控制端不编辑不下发；备注优先显示步骤串，单行超宽用 marquee 滚动）
+        binding.txtLoginSteps.text = strOf("sz_pwdStepsLabel").let { pwd ->
+            val verify = strOf("sz_verifyStepsLabel")
+            val cur = if (method == "验证码登录" && verify.isNotBlank()) verify else pwd
+            if (cur.isBlank()) "未配置" else cur
+        }
+        binding.txtAuthSteps.text = strOf("sz_authStepsLabel")
+            .let { if (it.isBlank()) "未配置" else it }
+        binding.txtPunchSteps.text = strOf("sz_punchStepsLabel")
+            .let { if (it.isBlank()) "未配置" else it }
+        binding.txtLoginSteps.isSelected = true
+        binding.txtAuthSteps.isSelected = true
+        binding.txtPunchSteps.isSelected = true
+
+        // 可用性：操作区 + 配置区
+        val on = editable()
+        binding.btnManualLogin.isEnabled = on
+        binding.btnIdentityVerify.isEnabled = on
+        binding.btnSimulatePunch.isEnabled = on
+        binding.btnSaveShizukuConfig.isEnabled = on
+        val alpha = if (on) 1f else 0.45f
+        binding.btnManualLogin.alpha = alpha
+        binding.btnIdentityVerify.alpha = alpha
+        binding.btnSimulatePunch.alpha = alpha
+        binding.btnSaveShizukuConfig.alpha = alpha
+    }
+
+    private fun chipColor(tv: TextView, ok: Boolean) {
+        tv.setTextColor(ContextCompat.getColor(requireContext(),
+            if (ok) R.color.md_success else R.color.md_warning))
+    }
+
+    /** 组装配置 JSON 下发：仅登录方式 + 超时；步骤由被控端本地维护，不在此下发 */
     private fun saveConfig() {
         val act = activity as? DeviceControlActivity ?: return
         val method = if (binding.radioPassword.isChecked) "PASSWORD" else "VERIFY_CODE"
         val json = JsonObject().apply {
-            addProperty("enabled", true)
             addProperty("method", method)
-            add("loginSteps", parseSteps(binding.etLoginSteps.text.toString()))
             addProperty("verifyWait", binding.etVerifyWait.text.toString().toIntOrNull() ?: 60)
-            add("authSteps", parseSteps(binding.etAuthSteps.text.toString()))
             addProperty("authWait", binding.etAuthWait.text.toString().toIntOrNull() ?: 60)
         }
         act.sendShizukuConfig(json.toString())
-        Toast.makeText(requireContext(), "已下发 Shizuku 配置", Toast.LENGTH_SHORT).show()
-    }
-
-    /** "a, b，c→d" → [{"t":"a"},{"t":"b"}...] */
-    private fun parseSteps(raw: String): JsonArray {
-        val arr = JsonArray()
-        raw.split(",", "，", "→")
-            .map { it.trim() }
-            .filter { it.isNotBlank() }
-            .forEach { arr.add(JsonObject().apply { addProperty("t", it) }) }
-        return arr
+        Toast.makeText(requireContext(), "已下发配置", Toast.LENGTH_SHORT).show()
     }
 
     private fun sendAction(action: String) {
         val act = activity as? DeviceControlActivity ?: return
-        val label = if (action == Protocol.ACTION_MANUAL_LOGIN) "手动登录" else "身份验证"
+        val label = when (action) {
+            Protocol.ACTION_MANUAL_LOGIN -> "手动登录"
+            Protocol.ACTION_SIMULATE_PUNCH -> "模拟打卡"
+            else -> "身份验证"
+        }
         act.sendShizukuAction(action)
         Toast.makeText(requireContext(), "已下发：$label", Toast.LENGTH_SHORT).show()
     }

@@ -184,6 +184,7 @@ class DeviceControlActivity : AppCompatActivity() {
     private lateinit var calendarFragment: CalendarFragment
     private lateinit var settingsFragment: SettingsFragment
     private lateinit var deviceFragment: DeviceFragment
+    private lateinit var shizukuFragment: ShizukuSettingsFragment
 
     companion object {
         private const val TAG_OVERVIEW = "overview"
@@ -239,6 +240,17 @@ binding = ActivityDeviceControlBinding.inflate(layoutInflater)
 
         binding.toolbar.setNavigationOnClickListener { finish() }
         binding.toolbar.title = device.name
+
+        // Shizuku 高级设置为设备详情子 tab：系统返回键从该子页退回「设置」，其余情况关闭页面
+        onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (currentFragmentTag == TAG_SHIZUKU) {
+                    switchTab(TAG_SETTINGS)
+                } else {
+                    finish()
+                }
+            }
+        })
 
 initFragments()
           setupControllerNav()
@@ -315,6 +327,7 @@ initFragments()
             onUnbind = { confirmUnbind() }
             onDelete = { confirmDeleteDevice() }
         }
+        shizukuFragment = ShizukuSettingsFragment()
 
         supportFragmentManager.beginTransaction()
             .add(R.id.fragmentContainer, overviewFragment, TAG_OVERVIEW)
@@ -322,10 +335,12 @@ initFragments()
             .add(R.id.fragmentContainer, calendarFragment, TAG_CALENDAR)
             .add(R.id.fragmentContainer, settingsFragment, TAG_SETTINGS)
             .add(R.id.fragmentContainer, deviceFragment, TAG_DEVICE)
+            .add(R.id.fragmentContainer, shizukuFragment, TAG_SHIZUKU)
             .hide(tasksFragment)
             .hide(calendarFragment)
             .hide(settingsFragment)
             .hide(deviceFragment)
+            .hide(shizukuFragment)
             .commitNow()
         overviewFragment.setRemoteEnabled(remoteEnabled)
     }
@@ -340,6 +355,7 @@ initFragments()
             TAG_CALENDAR -> calendarFragment
             TAG_SETTINGS -> settingsFragment
             TAG_DEVICE -> deviceFragment
+            TAG_SHIZUKU -> shizukuFragment
             else -> overviewFragment
         }
         val reduceMotion = android.provider.Settings.Global.getFloat(
@@ -348,7 +364,7 @@ initFragments()
             1f
         ) == 0f
         val ft = supportFragmentManager.beginTransaction()
-        listOf(overviewFragment, tasksFragment, calendarFragment, settingsFragment, deviceFragment)
+        listOf(overviewFragment, tasksFragment, calendarFragment, settingsFragment, deviceFragment, shizukuFragment)
             .forEach { ft.hide(it) }
         ft.show(target)
         if (reduceMotion) {
@@ -377,10 +393,12 @@ private fun setupControllerNav() {
           updateNavSelection(TAG_OVERVIEW)
       }
 
-      /** 更新导航选中态：图标/文字颜色（同 DT 方式，仅变色无胶囊指示器，§3.12）*/
+      /** 更新导航选中态：图标/文字颜色（同 DT 方式，仅变色无胶囊指示器，§3.12）。
+       *  Shizuku 高级设置为「设置」子页：切到该页时保持「设置」高亮，便于用户认知来源。 */
       private fun updateNavSelection(activeTag: String) {
           val activeColor = ContextCompat.getColor(this, R.color.md_primary)
           val inactiveColor = ContextCompat.getColor(this, R.color.md_onSurfaceVariant)
+          val settingsActive = activeTag == TAG_SETTINGS || activeTag == TAG_SHIZUKU
 
           fun setItemState(icon: ImageView, label: TextView, isActive: Boolean) {
               icon.imageTintList = if (isActive)
@@ -391,7 +409,7 @@ private fun setupControllerNav() {
           setItemState(binding.navBarDc.iconCalendar, binding.navBarDc.labelCalendar, activeTag == TAG_CALENDAR)
           setItemState(binding.navBarDc.iconTasks, binding.navBarDc.labelTasks, activeTag == TAG_TASKS)
           setItemState(binding.navBarDc.iconDevice, binding.navBarDc.labelDevice, activeTag == TAG_DEVICE)
-          setItemState(binding.navBarDc.iconSettings, binding.navBarDc.labelSettings, activeTag == TAG_SETTINGS)
+          setItemState(binding.navBarDc.iconSettings, binding.navBarDc.labelSettings, settingsActive)
 
         // 总览凸起按钮：两态共用同一白盘（同材质同投影，避免悬浮感割裂），选中仅以图标颜色区分
         val overviewActive = activeTag == TAG_OVERVIEW
@@ -407,6 +425,7 @@ private fun setupControllerNav() {
             TAG_CALENDAR -> calendarFragment
             TAG_SETTINGS -> settingsFragment
             TAG_DEVICE -> deviceFragment
+            TAG_SHIZUKU -> shizukuFragment
             else -> overviewFragment
         }
         target.refresh(snapshot)
@@ -849,6 +868,7 @@ private fun setupControllerNav() {
         overviewFragment.setRePairVisible(true)
         tasksFragment.setCommandsEnabled(false)
         settingsFragment.setCommandsEnabled(false)
+        shizukuFragment.setCommandsEnabled(false)
         deviceFragment.setUnboundState(true)
     }
 
@@ -858,6 +878,7 @@ private fun setupControllerNav() {
         overviewFragment.setRePairVisible(false)
         tasksFragment.setCommandsEnabled(true)
         settingsFragment.setCommandsEnabled(true)
+        shizukuFragment.setCommandsEnabled(true)
         deviceFragment.setUnboundState(false)
     }
 
@@ -1486,15 +1507,33 @@ private fun setupControllerNav() {
                     overviewFragment.refreshAlerts(AlertHistory.load(this, device.deviceId))
                     return@runOnUiThread
                 }
-                // feat_shiziku：被控端请求短信验证码 → 弹输入框回填下发
+                // feat_shiziku：被控端请求短信验证码 → 统一等待弹窗刷新为输入框回填下发（无等待弹窗时降级独立弹窗）
                 if (record.type == Protocol.ALERT_TYPE_VERIFY_CODE_REQUEST) {
                     showVerifyCodeRequestDialog(record.msg)
                     overviewFragment.refreshAlerts(AlertHistory.load(this, device.deviceId))
                     return@runOnUiThread
                 }
-                // feat_shiziku：手动登录 / 身份验证结果反馈 → 弹窗
-                if (record.type == Protocol.ALERT_TYPE_LOGIN_RESULT || record.type == Protocol.ALERT_TYPE_VERIFY_RESULT) {
-                    showAlertDialog(record)
+                // feat_shiziku：钉钉短信采集请求 → 统一等待弹窗刷新为短信内容+收件人+「已完成发送」
+                if (record.type == Protocol.ALERT_TYPE_SMS_CAPTURE) {
+                    refreshShizukuWaitToSms(record.msg)
+                    overviewFragment.refreshAlerts(AlertHistory.load(this, device.deviceId))
+                    return@runOnUiThread
+                }
+                // feat_shiziku：结果判定步骤（截图已经邮箱/企微回传）→ 统一等待弹窗刷新为「成功/失败」人工确认
+                if (record.type == Protocol.ALERT_TYPE_RESULT_SCREENSHOT) {
+                    refreshShizukuWaitToResultConfirm(record.msg)
+                    overviewFragment.refreshAlerts(AlertHistory.load(this, device.deviceId))
+                    return@runOnUiThread
+                }
+                // feat_shiziku：手动登录 / 身份验证 / 模拟打卡结果反馈 → 统一等待弹窗原位刷新为结果（无等待弹窗时弹告警）
+                if (record.type == Protocol.ALERT_TYPE_LOGIN_RESULT ||
+                    record.type == Protocol.ALERT_TYPE_VERIFY_RESULT ||
+                    record.type == Protocol.ALERT_TYPE_SIMULATE_PUNCH_RESULT) {
+                    if (shizukuWaitDialog?.isShowing == true) {
+                        finishShizukuWaitResult(record.msg)
+                    } else {
+                        showAlertDialog(record)
+                    }
                     overviewFragment.refreshAlerts(AlertHistory.load(this, device.deviceId))
                     return@runOnUiThread
                 }
@@ -1733,16 +1772,26 @@ val calendar = CalendarSnapshot(
     }
 
     // ===================== Shizuku 高级设置（feat_shiziku）=====================
-    /** 打开 Shizuku 高级设置镜像页（覆盖式 Fragment，返回键退出） */
+    /** 打开 Shizuku 高级设置镜像页（设备详情子 tab，入口在设置 tab；悬浮导航保持「设置」高亮） */
     fun openShizukuSettings() {
-        val ft = supportFragmentManager.beginTransaction()
-        ft.add(R.id.fragmentContainer, ShizukuSettingsFragment(), TAG_SHIZUKU)
-        ft.addToBackStack(TAG_SHIZUKU)
-        ft.commit()
+        switchTab(TAG_SHIZUKU)
     }
 
-    /** 下发 Shizuku 动作（手动登录 / 身份验证） */
-    fun sendShizukuAction(action: String) = sendAction(action)
+    /** Shizuku 高级设置子页「返回」/ 系统返回键：退回设置 tab */
+    fun openShizukuSettingsBack() {
+        switchTab(TAG_SETTINGS)
+    }
+
+    /** 下发 Shizuku 动作（手动登录 / 身份验证 / 模拟打卡） */
+    fun sendShizukuAction(action: String) {
+        val label = when (action) {
+            Protocol.ACTION_MANUAL_LOGIN -> "手动登录"
+            Protocol.ACTION_SIMULATE_PUNCH -> "模拟打卡"
+            else -> "身份验证"
+        }
+        showShizukuWaitDialog(label)
+        sendAction(action)
+    }
 
     /** 下发 Shizuku 镜像配置（不含密码明文；密码仅被控端本地设置） */
     fun sendShizukuConfig(json: String) =
@@ -1762,26 +1811,367 @@ val calendar = CalendarSnapshot(
         }.getOrDefault(emptyMap())
     }
 
-    /** 被控端请求短信验证码 → 弹输入框 → FIELD_VERIFY_CODE 回填下发 */
+    // ═══════ Shizuku 手动登录 / 身份验证统一等待弹窗（feat_shiziku）═══════
+    // 下发后先弹「等待被控端执行」，按被控端反馈原位刷新：
+    //  - ALERT_TYPE_VERIFY_CODE_REQUEST → 刷新为验证码输入框 → FIELD_VERIFY_CODE 下发
+    //  - ALERT_TYPE_SMS_CAPTURE（钉钉）→ 刷新为短信内容+收件人+「已完成发送」→ FIELD_SMS_SENT 下发
+    //  - ALERT_TYPE_LOGIN_RESULT / ALERT_TYPE_VERIFY_RESULT → 刷新为结果
+    private var shizukuWaitDialog: androidx.appcompat.app.AlertDialog? = null
+    private var shizukuWaitContainer: android.widget.LinearLayout? = null
+    private var shizukuWaitPosBtn: android.widget.Button? = null
+    private var shizukuWaitNegBtn: android.widget.Button? = null
+
+    /** 下发手动登录/身份验证后：弹出等待弹窗（等待被控端执行） */
+    private fun showShizukuWaitDialog(title: String) {
+        val container = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(
+                (resources.displayMetrics.density * 16).toInt(),
+                (resources.displayMetrics.density * 12).toInt(),
+                (resources.displayMetrics.density * 16).toInt(),
+                (resources.displayMetrics.density * 12).toInt()
+            )
+            addView(android.widget.TextView(this@DeviceControlActivity).apply {
+                gravity = android.view.Gravity.CENTER
+                textSize = 14f
+                text = "指令已下发，等待被控端执行…"
+                setTextColor(ContextCompat.getColor(this@DeviceControlActivity, R.color.md_onSurfaceVariant))
+            })
+        }
+        shizukuWaitContainer = container
+        shizukuWaitDialog = UnifiedDialogKit.showForm(
+            ctx = this,
+            contentView = container,
+            title = title,
+            message = null,
+            positiveText = "关闭",
+            negativeText = null,
+            cancelable = true,
+            onShow = { _, pos, neg ->
+                shizukuWaitPosBtn = pos
+                shizukuWaitNegBtn = neg
+            },
+            onConfirm = { shizukuWaitDialog = null; true },
+            onCancel = { shizukuWaitDialog = null; true }
+        )
+    }
+
+    /** 原位刷新等待弹窗内容；无弹窗时不操作 */
+    private fun refreshShizukuWait(rebuild: (android.widget.LinearLayout) -> Unit) {
+        val dlg = shizukuWaitDialog
+        val box = shizukuWaitContainer
+        if (dlg == null || box == null || !dlg.isShowing) return
+        box.removeAllViews()
+        rebuild(box)
+    }
+
+    /** 重配等待弹窗底部按钮栏：negText 为 null 时单按钮居中；否则双按钮等宽并列。
+     *  showForm 创建时 negativeText=null 会把正按钮改成居中单按钮，故此处需手动恢复等宽并列参数。 */
+    private fun configShizukuWaitButtons(
+        posText: String,
+        onPos: () -> Unit,
+        negText: String? = null,
+        onNeg: (() -> Unit)? = null
+    ) {
+        val pos = shizukuWaitPosBtn ?: return
+        pos.text = posText
+        pos.visibility = View.VISIBLE
+        pos.setOnClickListener { onPos() }
+        if (negText != null && onNeg != null) {
+            val neg = shizukuWaitNegBtn ?: return
+            neg.text = negText
+            neg.visibility = View.VISIBLE
+            neg.setOnClickListener { onNeg() }
+            val posLp = (pos.layoutParams as android.widget.LinearLayout.LayoutParams)
+            posLp.width = 0
+            posLp.weight = 1f
+            pos.layoutParams = posLp
+            val negLp = (neg.layoutParams as android.widget.LinearLayout.LayoutParams)
+            negLp.width = 0
+            negLp.weight = 1f
+            neg.layoutParams = negLp
+        } else {
+            shizukuWaitNegBtn?.visibility = View.GONE
+            val posLp = (pos.layoutParams as android.widget.LinearLayout.LayoutParams)
+            posLp.width = android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+            posLp.weight = 0f
+            pos.layoutParams = posLp
+        }
+    }
+
+    /** 弹输入法：让弹窗窗口以「允许输入」模式重新关联 IME，再聚焦输入框并强制唤出软键盘。
+     *  等待弹窗创建时未设输入模式（继承 Activity 的 stateAlwaysHidden），内容刷新为输入框后
+     *  若仅 requestFocus/showSoftInput 往往仍不弹；需显式 setSoftInputMode + 强制 show。
+     *  关键：必须清除 FLAG_ALT_FOCUSABLE_IM——该 flag 会让系统判定「窗口不需要输入法」，
+     *  EditText 即使能触摸（长按/粘贴）也拿不到 IME 服务（mServedInputConnection=null），键盘永不弹出。 */
+    private fun forceShowIme(dlg: androidx.appcompat.app.AlertDialog?, et: EditText) {
+        val win = dlg?.window ?: return
+        win.clearFlags(android.view.WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM)
+        @Suppress("DEPRECATION") // 兼容旧版系统；API 33+ 仅标记废弃仍有效
+        win.setSoftInputMode(
+            android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE or
+                android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+        )
+        et.post {
+            et.requestFocus()
+            et.postDelayed({
+                val imm = getSystemService(android.content.Context.INPUT_METHOD_SERVICE)
+                    as? android.view.inputmethod.InputMethodManager
+                @Suppress("DEPRECATION") // 兼容旧版系统；强制弹出软键盘
+                imm?.showSoftInput(et, android.view.inputmethod.InputMethodManager.SHOW_FORCED)
+            }, 200)
+        }
+    }
+
+    /** 验证码请求 → 弹窗刷新为验证码输入框（下发放 FIELD_VERIFY_CODE） */
+    private fun refreshShizukuWaitToCode(msg: String) {
+        var input: EditText? = null
+        refreshShizukuWait { box ->
+            box.addView(android.widget.TextView(this).apply {
+                text = msg
+                textSize = 13f
+                setTextColor(ContextCompat.getColor(this@DeviceControlActivity, R.color.md_onSurfaceVariant))
+            })
+            val et = EditText(this).apply {
+                hint = "输入短信验证码"
+                inputType = android.text.InputType.TYPE_CLASS_NUMBER
+                textSize = 14f
+            }
+            input = et
+            box.addView(et, android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = (resources.displayMetrics.density * 10).toInt() })
+        }
+        configShizukuWaitButtons(
+            posText = "下发验证码",
+            onPos = {
+                val code = input?.text.toString().trim()
+                if (code.isBlank()) {
+                    Toast.makeText(this@DeviceControlActivity, "验证码不能为空", Toast.LENGTH_SHORT).show()
+                } else {
+                    sendUpdate(Protocol.FIELD_VERIFY_CODE, PacketValue.StringValue(code))
+                    Toast.makeText(this@DeviceControlActivity, "已下发验证码", Toast.LENGTH_SHORT).show()
+                    shizukuWaitDialog?.dismiss(); shizukuWaitDialog = null
+                }
+            },
+            negText = "取消",
+            onNeg = { shizukuWaitDialog?.dismiss(); shizukuWaitDialog = null }
+        )
+        val et = input ?: return
+        forceShowIme(shizukuWaitDialog, et)
+    }
+
+    /** 钉钉短信采集请求 → 弹窗刷新为短信内容+收件人+复制/去发送+「已完成发送」（下发放 FIELD_SMS_SENT） */
+    private fun refreshShizukuWaitToSms(msg: String) {
+        refreshShizukuWait { box ->
+            var content = "请将登录验证码短信发送至收件人"
+            var recipient = "待定"
+            runCatching {
+                val o = JsonParser.parseString(msg).asJsonObject
+                content = o.get("content")?.takeIf { it.isJsonPrimitive }?.asString ?: content
+                recipient = o.get("recipient")?.takeIf { it.isJsonPrimitive }?.asString ?: recipient
+            }
+            fun dp(v: Int) = (resources.displayMetrics.density * v).toInt()
+            fun sectionTitle(text: String): android.widget.TextView = android.widget.TextView(this).apply {
+                this.text = text
+                textSize = 12f
+                setTextColor(ContextCompat.getColor(this@DeviceControlActivity, R.color.md_primary))
+            }
+            fun copyPill(label: String, copyText: String): android.widget.TextView =
+                android.widget.TextView(this).apply {
+                    text = label
+                    textSize = 12f
+                    setTextColor(ContextCompat.getColor(this@DeviceControlActivity, R.color.md_primary))
+                    gravity = android.view.Gravity.CENTER
+                    setPadding(dp(12), dp(4), dp(12), dp(4))
+                    background = android.graphics.drawable.GradientDrawable().apply {
+                        cornerRadius = resources.displayMetrics.density * 10
+                        setColor(ContextCompat.getColor(this@DeviceControlActivity, R.color.md_primaryContainer))
+                    }
+                    setOnClickListener {
+                        (getSystemService(CLIPBOARD_SERVICE) as? android.content.ClipboardManager)
+                            ?.setPrimaryClip(android.content.ClipData.newPlainText(label, copyText))
+                        Toast.makeText(this@DeviceControlActivity, "已复制$label", Toast.LENGTH_SHORT).show()
+                    }
+                }
+
+            box.addView(sectionTitle("短信内容"))
+            box.addView(android.widget.LinearLayout(this).apply {
+                orientation = android.widget.LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                addView(android.widget.TextView(this@DeviceControlActivity).apply {
+                    text = content
+                    textSize = 14f
+                    setTextColor(ContextCompat.getColor(this@DeviceControlActivity, R.color.md_onSurface))
+                    layoutParams = android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                })
+                addView(copyPill("复制内容", content))
+            })
+            box.addView(sectionTitle("收件人").apply {
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = dp(10) }
+            })
+            box.addView(android.widget.LinearLayout(this).apply {
+                orientation = android.widget.LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                addView(android.widget.TextView(this@DeviceControlActivity).apply {
+                    text = recipient
+                    textSize = 14f
+                    setTextColor(ContextCompat.getColor(this@DeviceControlActivity, R.color.md_onSurface))
+                    layoutParams = android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                })
+                addView(copyPill("复制收件人", recipient))
+            })
+            // 并排双按钮（不同颜色）：去发送（主色）+ 已完成（成功色）
+            fun pillBtn(text: String, bgColor: Int, onClick: () -> Unit): android.widget.TextView =
+                android.widget.TextView(this@DeviceControlActivity).apply {
+                    this.text = text
+                    textSize = 14f
+                    gravity = android.view.Gravity.CENTER
+                    setTextColor(android.graphics.Color.WHITE)
+                    setPadding(dp(12), dp(10), dp(12), dp(10))
+                    background = android.graphics.drawable.GradientDrawable().apply {
+                        cornerRadius = resources.displayMetrics.density * 8
+                        setColor(bgColor)
+                    }
+                    layoutParams = android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                    setOnClickListener { onClick() }
+                }
+            box.addView(android.widget.LinearLayout(this).apply {
+                orientation = android.widget.LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = dp(12) }
+                addView(pillBtn("去发送", ContextCompat.getColor(this@DeviceControlActivity, R.color.md_primary)) {
+                    val uri = android.net.Uri.parse("smsto:$recipient")
+                    val intent = Intent(Intent.ACTION_SENDTO, uri).putExtra("sms_body", content)
+                    runCatching { startActivity(intent) }.onFailure {
+                        Toast.makeText(this@DeviceControlActivity, "未找到可用的短信应用", Toast.LENGTH_SHORT).show()
+                    }
+                })
+                val gap = android.view.View(this@DeviceControlActivity)
+                addView(gap, android.widget.LinearLayout.LayoutParams(dp(8), 1))
+                addView(pillBtn("已完成", ContextCompat.getColor(this@DeviceControlActivity, R.color.md_success)) {
+                    sendUpdate(Protocol.FIELD_SMS_SENT, PacketValue.StringValue("1"))
+                    Toast.makeText(this@DeviceControlActivity, "已通知被控端继续", Toast.LENGTH_SHORT).show()
+                    shizukuWaitDialog?.dismiss(); shizukuWaitDialog = null
+                })
+            })
+            box.addView(android.widget.TextView(this).apply {
+                text = "点「去发送」打开短信应用确认收件人与内容后发送；已发送点「已完成」通知被控端继续。"
+                textSize = 12f
+                setTextColor(ContextCompat.getColor(this@DeviceControlActivity, R.color.md_onSurfaceVariant))
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = dp(10) }
+            })
+        }
+        // 双按钮已内置于内容区，隐藏底部按钮栏避免重复
+        shizukuWaitPosBtn?.visibility = View.GONE
+        shizukuWaitNegBtn?.visibility = View.GONE
+    }
+
+    /** 结果判定步骤（截图已经邮箱/企微回传）→ 弹窗刷新为「成功/失败」人工确认（下发 FIELD_RESULT_CONFIRM） */
+    private fun refreshShizukuWaitToResultConfirm(msg: String) {
+        refreshShizukuWait { box ->
+            box.addView(android.widget.TextView(this).apply {
+                text = msg
+                textSize = 13f
+                setTextColor(ContextCompat.getColor(this@DeviceControlActivity, R.color.md_onSurfaceVariant))
+            })
+            box.addView(android.widget.TextView(this).apply {
+                text = "请查看邮箱/企微收到的被控端截图，判断登录/验证是否成功："
+                textSize = 14f
+                setTextColor(ContextCompat.getColor(this@DeviceControlActivity, R.color.md_onSurface))
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = (resources.displayMetrics.density * 10).toInt() }
+            })
+        }
+        configShizukuWaitButtons(
+            posText = "成功",
+            onPos = {
+                sendUpdate(Protocol.FIELD_RESULT_CONFIRM, PacketValue.StringValue("success"))
+                Toast.makeText(this@DeviceControlActivity, "已确认成功", Toast.LENGTH_SHORT).show()
+                shizukuWaitDialog?.dismiss(); shizukuWaitDialog = null
+            },
+            negText = "失败",
+            onNeg = {
+                sendUpdate(Protocol.FIELD_RESULT_CONFIRM, PacketValue.StringValue("fail"))
+                Toast.makeText(this@DeviceControlActivity, "已确认失败", Toast.LENGTH_SHORT).show()
+                shizukuWaitDialog?.dismiss(); shizukuWaitDialog = null
+            }
+        )
+    }
+
+    /** 手动登录 / 身份验证结果 → 弹窗原位刷新为结果 */
+    private fun finishShizukuWaitResult(msg: String) {
+        refreshShizukuWait { box ->
+            box.addView(android.widget.TextView(this).apply {
+                text = msg
+                textSize = 14f
+                setTextColor(ContextCompat.getColor(this@DeviceControlActivity, R.color.md_onSurface))
+                gravity = android.view.Gravity.CENTER
+            })
+        }
+        shizukuWaitDialog?.setTitle("执行结果")
+        configShizukuWaitButtons(
+            posText = "关闭",
+            onPos = { shizukuWaitDialog?.dismiss(); shizukuWaitDialog = null }
+        )
+    }
+
+    /** 被控端请求短信验证码 → 弹输入框 → FIELD_VERIFY_CODE 回填下发（无等待弹窗时降级为独立统一风格弹窗） */
     private fun showVerifyCodeRequestDialog(msg: String) {
+        if (shizukuWaitDialog?.isShowing == true) {
+            refreshShizukuWaitToCode(msg)
+            return
+        }
         val input = android.widget.EditText(this).apply {
             hint = "输入短信验证码"
             inputType = android.text.InputType.TYPE_CLASS_NUMBER
         }
-        androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle("验证码请求")
-            .setMessage(msg)
-            .setView(input)
-            .setPositiveButton("下发") { _, _ ->
+        val container = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            addView(android.widget.TextView(this@DeviceControlActivity).apply {
+                text = msg
+                textSize = 13f
+                setTextColor(ContextCompat.getColor(this@DeviceControlActivity, R.color.md_onSurfaceVariant))
+            })
+            addView(input, android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = (resources.displayMetrics.density * 10).toInt() })
+        }
+        UnifiedDialogKit.showForm(
+            ctx = this,
+            contentView = container,
+            title = "验证码请求",
+            message = null,
+            positiveText = "下发",
+            negativeText = "取消",
+            onShow = { dlg, _, _ ->
+                forceShowIme(dlg, input)
+            },
+            onConfirm = { dlg ->
                 val code = input.text.toString().trim()
                 if (code.isBlank()) {
                     Toast.makeText(this, "验证码不能为空", Toast.LENGTH_SHORT).show()
+                    false
                 } else {
                     sendUpdate(Protocol.FIELD_VERIFY_CODE, PacketValue.StringValue(code))
+                    dlg.dismiss()
+                    true
                 }
             }
-            .setNegativeButton("取消", null)
-            .show()
+        )
     }
 
     // ===================== 一次性动作指令 =====================
