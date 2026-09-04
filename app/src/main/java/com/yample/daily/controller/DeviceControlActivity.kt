@@ -1525,10 +1525,11 @@ private fun setupControllerNav() {
                     overviewFragment.refreshAlerts(AlertHistory.load(this, device.deviceId))
                     return@runOnUiThread
                 }
-                // feat_shiziku：手动登录 / 身份验证 / 模拟打卡结果反馈 → 统一等待弹窗原位刷新为结果（无等待弹窗时弹告警）
+                // feat_shiziku：手动登录 / 验证码登录 / 身份验证 / 模拟打卡 / 自定义操作结果反馈 → 统一等待弹窗原位刷新为结果（无等待弹窗时弹告警）
                 if (record.type == Protocol.ALERT_TYPE_LOGIN_RESULT ||
                     record.type == Protocol.ALERT_TYPE_VERIFY_RESULT ||
-                    record.type == Protocol.ALERT_TYPE_SIMULATE_PUNCH_RESULT) {
+                    record.type == Protocol.ALERT_TYPE_SIMULATE_PUNCH_RESULT ||
+                    record.type == Protocol.ALERT_TYPE_CUSTOM_RESULT) {
                     if (shizukuWaitDialog?.isShowing == true) {
                         finishShizukuWaitResult(record.msg)
                     } else {
@@ -1782,11 +1783,16 @@ val calendar = CalendarSnapshot(
         switchTab(TAG_SETTINGS)
     }
 
-    /** 下发 Shizuku 动作（手动登录 / 身份验证 / 模拟打卡） */
+    /** 下发 Shizuku 动作（手动登录 / 验证码登录 / 身份验证 / 模拟打卡 / 自定义操作1/2） */
     fun sendShizukuAction(action: String) {
+        val mirror = shizukuMirrorSummary()
         val label = when (action) {
-            Protocol.ACTION_MANUAL_LOGIN -> "手动登录"
+            Protocol.ACTION_MANUAL_LOGIN -> "密码登录"
+            Protocol.ACTION_VERIFY_LOGIN -> "验证码登录"
+            Protocol.ACTION_IDENTITY_VERIFY -> "身份验证"
             Protocol.ACTION_SIMULATE_PUNCH -> "模拟打卡"
+            Protocol.ACTION_CUSTOM_1 -> mirror["sz_opName1"]?.takeIf { it.isNotBlank() } ?: "操作1"
+            Protocol.ACTION_CUSTOM_2 -> mirror["sz_opName2"]?.takeIf { it.isNotBlank() } ?: "操作2"
             else -> "身份验证"
         }
         showShizukuWaitDialog(label)

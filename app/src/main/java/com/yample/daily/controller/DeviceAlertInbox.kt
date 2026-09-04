@@ -166,6 +166,11 @@ object DeviceAlertInbox {
                 title = "🕐 模拟打卡结果"
                 from
             }
+            Protocol.ALERT_TYPE_CUSTOM_RESULT -> {
+                val from = obj.get("msg")?.asString ?: "自定义操作结果"
+                title = "🔧 自定义操作结果"
+                from
+            }
             Protocol.ALERT_TYPE_TASK_START -> {
                 val from = obj.get("msg")?.asString ?: "远程启动任务"
                 title = "▶️ 任务已启动"
