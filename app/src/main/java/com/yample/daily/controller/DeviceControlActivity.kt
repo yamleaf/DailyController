@@ -1783,7 +1783,7 @@ val calendar = CalendarSnapshot(
         switchTab(TAG_SETTINGS)
     }
 
-    /** 下发 Shizuku 动作（手动登录 / 验证码登录 / 身份验证 / 模拟打卡 / 自定义操作1/2） */
+    /** 下发 Shizuku 动作（手动登录 / 验证码登录 / 身份验证 / 模拟打卡 / 手动截屏 / 自定义操作1） */
     fun sendShizukuAction(action: String) {
         val mirror = shizukuMirrorSummary()
         val label = when (action) {
@@ -1791,8 +1791,8 @@ val calendar = CalendarSnapshot(
             Protocol.ACTION_VERIFY_LOGIN -> "验证码登录"
             Protocol.ACTION_IDENTITY_VERIFY -> "身份验证"
             Protocol.ACTION_SIMULATE_PUNCH -> "模拟打卡"
+            Protocol.ACTION_SCREENSHOT -> "手动截屏"
             Protocol.ACTION_CUSTOM_1 -> mirror["sz_opName1"]?.takeIf { it.isNotBlank() } ?: "操作1"
-            Protocol.ACTION_CUSTOM_2 -> mirror["sz_opName2"]?.takeIf { it.isNotBlank() } ?: "操作2"
             else -> "身份验证"
         }
         showShizukuWaitDialog(label)
