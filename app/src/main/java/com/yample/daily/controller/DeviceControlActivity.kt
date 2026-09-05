@@ -1519,9 +1519,14 @@ private fun setupControllerNav() {
                     overviewFragment.refreshAlerts(AlertHistory.load(this, device.deviceId))
                     return@runOnUiThread
                 }
-                // feat_shiziku：结果判定步骤（截图已经邮箱/企微回传）→ 统一等待弹窗刷新为「成功/失败」人工确认
+                // feat_shiziku：手动截屏 / 结果判定（截图已经邮箱/企微回传，方案 B 后 DT 不再
+                // 等待人工确认）→ 与流程结果一致：等待弹窗原位刷新为结果，用户点「关闭」结束
                 if (record.type == Protocol.ALERT_TYPE_RESULT_SCREENSHOT) {
-                    refreshShizukuWaitToResultConfirm(record.msg)
+                    if (shizukuWaitDialog?.isShowing == true) {
+                        finishShizukuWaitResult(record.msg)
+                    } else {
+                        showAlertDialog(record)
+                    }
                     overviewFragment.refreshAlerts(AlertHistory.load(this, device.deviceId))
                     return@runOnUiThread
                 }
@@ -2081,40 +2086,6 @@ val calendar = CalendarSnapshot(
         // 双按钮已内置于内容区，隐藏底部按钮栏避免重复
         shizukuWaitPosBtn?.visibility = View.GONE
         shizukuWaitNegBtn?.visibility = View.GONE
-    }
-
-    /** 结果判定步骤（截图已经邮箱/企微回传）→ 弹窗刷新为「成功/失败」人工确认（下发 FIELD_RESULT_CONFIRM） */
-    private fun refreshShizukuWaitToResultConfirm(msg: String) {
-        refreshShizukuWait { box ->
-            box.addView(android.widget.TextView(this).apply {
-                text = msg
-                textSize = 13f
-                setTextColor(ContextCompat.getColor(this@DeviceControlActivity, R.color.md_onSurfaceVariant))
-            })
-            box.addView(android.widget.TextView(this).apply {
-                text = "请查看邮箱/企微收到的被控端截图，判断登录/验证是否成功："
-                textSize = 14f
-                setTextColor(ContextCompat.getColor(this@DeviceControlActivity, R.color.md_onSurface))
-                layoutParams = android.widget.LinearLayout.LayoutParams(
-                    android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
-                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { topMargin = (resources.displayMetrics.density * 10).toInt() }
-            })
-        }
-        configShizukuWaitButtons(
-            posText = "成功",
-            onPos = {
-                sendUpdate(Protocol.FIELD_RESULT_CONFIRM, PacketValue.StringValue("success"))
-                Toast.makeText(this@DeviceControlActivity, "已确认成功", Toast.LENGTH_SHORT).show()
-                shizukuWaitDialog?.dismiss(); shizukuWaitDialog = null
-            },
-            negText = "失败",
-            onNeg = {
-                sendUpdate(Protocol.FIELD_RESULT_CONFIRM, PacketValue.StringValue("fail"))
-                Toast.makeText(this@DeviceControlActivity, "已确认失败", Toast.LENGTH_SHORT).show()
-                shizukuWaitDialog?.dismiss(); shizukuWaitDialog = null
-            }
-        )
     }
 
     /** 手动登录 / 身份验证结果 → 弹窗原位刷新为结果 */
