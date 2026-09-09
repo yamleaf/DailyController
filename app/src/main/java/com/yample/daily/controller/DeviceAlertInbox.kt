@@ -50,7 +50,9 @@ object DeviceAlertInbox {
         val expected = MqttSigner.sign(
             session, device.deviceId, packet.ts, packet.rid, packet.f, "s", json, Protocol.CMD_ALERT
         )
-        return expected == packet.sign
+        return java.security.MessageDigest.isEqual(
+            expected.toByteArray(Charsets.UTF_8), packet.sign.toByteArray(Charsets.UTF_8)
+        )
     }
 
     private fun parse(json: String, rid: String, broker: String = ""): AlertRecord? {

@@ -126,8 +126,11 @@ class DeviceControlActivity : AppCompatActivity() {
     /** 是否已经判定被控端离线（防止重复刷屏/重复动作） */
     private var recentlyMarkedOffline = false
 
+    /** 当前快照。MQTT 回调线程写（拉取/增量合并）、主线程读（刷新 UI）→ volatile 保证跨线程可见性 */
+    @Volatile
     private var currentSnapshot: DeviceSnapshot? = null
-    /** 原始快照 JSON（按区块合并增量推送用），持久化到本地缓存 */
+    /** 原始快照 JSON（按区块合并增量推送用），持久化到本地缓存；同理跨线程读写 */
+    @Volatile
     private var snapshotJson: JsonObject? = null
     private var currentFragmentTag = TAG_OVERVIEW
 
@@ -153,9 +156,13 @@ class DeviceControlActivity : AppCompatActivity() {
     /**
      * rid → 指令展示名。单变量 lastCommandLabel 在「连续下发多条指令」时会被后一条覆盖，
      * 导致先回来的 ACK 关联到错误的指令名（「最近指令」错乱）。按 rid 精确关联可根治。
-     * 用 LinkedHashMap 并限长，避免 ACK 丢失时无限增长。
+     * ConcurrentHashMap：handleAck 在 Paho 回调线程读写、主线程 rememberCommandLabel/下发时写，
+     * 普通 HashMap 并发 resize 可能成环/丢条目；size 上限兜底防 ACK 丢失时无限增长。
+     * 注：CHM 迭代无序，size 超限时的淘汰不保证淘汰「最旧」条目（旧 LinkedHashMap 才保证
+     * FIFO）；由于 ACK 正常时每 rid 都会被移除、仅 ACK 丢失时才触发上限淘汰，且超限后仍按
+     * rid 精确关联，此差异仅影响极端兜底场景下淘汰哪一条，无功能影响，故不再按插入序维护。
      */
-    private val pendingCommands = mutableMapOf<String, PendingCommand>()
+    private val pendingCommands = java.util.concurrent.ConcurrentHashMap<String, PendingCommand>()
 
     private data class PendingCommand(
         val field: String,
@@ -252,7 +259,7 @@ binding = ActivityDeviceControlBinding.inflate(layoutInflater)
             }
         })
 
-initFragments()
+        initFragments(savedInstanceState)
           setupControllerNav()
           switchTab(TAG_OVERVIEW)
 
@@ -281,8 +288,80 @@ initFragments()
         }
     }
 
-    private fun initFragments() {
-        overviewFragment = OverviewFragment().apply {
+    private fun initFragments(savedInstanceState: Bundle?) {
+        if (savedInstanceState != null) {
+            // Activity 重建（系统回收/字体深色切换等）：FragmentManager 已自动恢复 6 个同 tag 实例，
+            // 必须按 tag 取回重绑成员与回调。若像首次创建那样再次 new + add，容器里会同时存在新旧两套
+            // fragment（同 tag），用户离开时可见的 tab 恢复后与新 add 的实例都处于 show → 界面叠影 +
+            // 回调双份（同一条指令发两次/告警弹两次）。
+            val fm = supportFragmentManager
+            val restoredOverview = fm.findFragmentByTag(TAG_OVERVIEW) as? OverviewFragment
+            val restoredTasks = fm.findFragmentByTag(TAG_TASKS) as? TasksFragment
+            val restoredCalendar = fm.findFragmentByTag(TAG_CALENDAR) as? CalendarFragment
+            val restoredSettings = fm.findFragmentByTag(TAG_SETTINGS) as? SettingsFragment
+            val restoredDevice = fm.findFragmentByTag(TAG_DEVICE) as? DeviceFragment
+            val restoredShizuku = fm.findFragmentByTag(TAG_SHIZUKU) as? ShizukuSettingsFragment
+            if (restoredOverview == null || restoredTasks == null || restoredCalendar == null ||
+                restoredSettings == null || restoredDevice == null || restoredShizuku == null
+            ) {
+                // 状态恢复不完整（极端场景）：移除残留后走首次创建路径，避免容器残留脏实例
+                Log.w(TAG, "Fragment 恢复不完整，移除残留后重建")
+                fm.fragments.forEach { frag ->
+                    runCatching { fm.beginTransaction().remove(frag).commitNow() }
+                }
+                createAndAddFragments()
+                return
+            }
+            overviewFragment = restoredOverview
+            tasksFragment = restoredTasks
+            calendarFragment = restoredCalendar
+            settingsFragment = restoredSettings
+            deviceFragment = restoredDevice
+            shizukuFragment = restoredShizuku
+            bindFragmentCallbacks()
+            // 恢复的 hide/show 状态可能停留在非 overview tab（离开详情页时的位置）。
+            // 同步 currentFragmentTag，让 onCreate 末尾的 switchTab(TAG_OVERVIEW) 能正常走 hide-all/show
+            // 归一化流程（若这里不更新，currentFragmentTag 默认 overview 会导致 switchTab 相等早退，
+            // 出现「界面停在上次 tab、导航却高亮 overview」的不一致）。
+            currentFragmentTag = listOf(
+                TAG_OVERVIEW to restoredOverview, TAG_TASKS to restoredTasks,
+                TAG_CALENDAR to restoredCalendar, TAG_SETTINGS to restoredSettings,
+                TAG_DEVICE to restoredDevice, TAG_SHIZUKU to restoredShizuku
+            ).firstOrNull { (_, f) -> f.isAdded && !f.isHidden }?.first ?: TAG_OVERVIEW
+            return
+        }
+        createAndAddFragments()
+    }
+
+    /** 首次创建：new 6 个 Fragment 并 add 进容器（hide 5 个只留 overview） */
+    private fun createAndAddFragments() {
+        overviewFragment = OverviewFragment()
+        tasksFragment = TasksFragment()
+        calendarFragment = CalendarFragment()
+        settingsFragment = SettingsFragment()
+        deviceFragment = DeviceFragment()
+        shizukuFragment = ShizukuSettingsFragment()
+        bindFragmentCallbacks()
+
+        supportFragmentManager.beginTransaction()
+            .add(R.id.fragmentContainer, overviewFragment, TAG_OVERVIEW)
+            .add(R.id.fragmentContainer, tasksFragment, TAG_TASKS)
+            .add(R.id.fragmentContainer, calendarFragment, TAG_CALENDAR)
+            .add(R.id.fragmentContainer, settingsFragment, TAG_SETTINGS)
+            .add(R.id.fragmentContainer, deviceFragment, TAG_DEVICE)
+            .add(R.id.fragmentContainer, shizukuFragment, TAG_SHIZUKU)
+            .hide(tasksFragment)
+            .hide(calendarFragment)
+            .hide(settingsFragment)
+            .hide(deviceFragment)
+            .hide(shizukuFragment)
+            .commitNow()
+        overviewFragment.setRemoteEnabled(remoteEnabled)
+    }
+
+    /** 绑定各 Fragment 回调（首次创建与重建恢复共用，避免双份绑定代码漂移） */
+    private fun bindFragmentCallbacks() {
+        overviewFragment.apply {
             onRefreshClick = {
                 overviewFragment.setRefreshing(false)
                 sendQuery()
@@ -300,13 +379,12 @@ initFragments()
             onAlertClick = { record -> showAlertDialog(record) }
             setRemoteEnabled(remoteEnabled)
         }
-        tasksFragment = TasksFragment().apply {
+        tasksFragment.apply {
             onAddTask = { time, name -> sendTask("add", time, null, name) }
             onEditTask = { item, newTime, name -> sendTask("update", newTime, item.time, name) }
             onDeleteTask = { item -> sendTask("delete", item.time, item.time) }
         }
-        calendarFragment = CalendarFragment()
-        settingsFragment = SettingsFragment().apply {
+        settingsFragment.apply {
             onToggle = { item, on -> sendUpdate(item.key, PacketValue.BooleanValue(on)) }
             onIntChange = { item, v -> sendUpdate(item.key, PacketValue.IntValue(v)) }
             onStringChange = { item, s -> sendUpdate(item.key, PacketValue.StringValue(s)) }
@@ -322,27 +400,12 @@ initFragments()
             // feat_shiziku：Shizuku 高级设置镜像入口
             onShizukuClick = { openShizukuSettings() }
         }
-        deviceFragment = DeviceFragment().apply {
+        deviceFragment.apply {
             // 已绑定：解绑设备（下发 UB）；未绑定：删除设备（清本地记录回列表）
             onUnbind = { confirmUnbind() }
             onDelete = { confirmDeleteDevice() }
         }
-        shizukuFragment = ShizukuSettingsFragment()
-
-        supportFragmentManager.beginTransaction()
-            .add(R.id.fragmentContainer, overviewFragment, TAG_OVERVIEW)
-            .add(R.id.fragmentContainer, tasksFragment, TAG_TASKS)
-            .add(R.id.fragmentContainer, calendarFragment, TAG_CALENDAR)
-            .add(R.id.fragmentContainer, settingsFragment, TAG_SETTINGS)
-            .add(R.id.fragmentContainer, deviceFragment, TAG_DEVICE)
-            .add(R.id.fragmentContainer, shizukuFragment, TAG_SHIZUKU)
-            .hide(tasksFragment)
-            .hide(calendarFragment)
-            .hide(settingsFragment)
-            .hide(deviceFragment)
-            .hide(shizukuFragment)
-            .commitNow()
-        overviewFragment.setRemoteEnabled(remoteEnabled)
+        // calendarFragment / shizukuFragment 无回调，无需绑定
     }
 
     private fun switchTab(tag: String) {
@@ -827,7 +890,10 @@ private fun setupControllerNav() {
                     val expected = MqttSigner.sign(
                         session, device.deviceId, packet.ts, packet.rid, "", "s", state, Protocol.CMD_STATUS
                     )
-                    if (expected != packet.sign) {
+                    if (!java.security.MessageDigest.isEqual(
+                            expected.toByteArray(Charsets.UTF_8), packet.sign.toByteArray(Charsets.UTF_8)
+                        )
+                    ) {
                         Log.w(TAG, "status 签名信封验签失败，已忽略")
                         return null
                     }
@@ -951,7 +1017,10 @@ private fun setupControllerNav() {
         val expected = MqttSigner.sign(
             device.pairingToken, device.deviceId, packet.ts, packet.rid, "", "s", ok, Protocol.CMD_PAIR_ACCEPT
         )
-        if (expected != packet.sign) {
+        if (!java.security.MessageDigest.isEqual(
+                expected.toByteArray(Charsets.UTF_8), packet.sign.toByteArray(Charsets.UTF_8)
+            )
+        ) {
             Log.w(TAG, "PA 验签失败，忽略伪造配对确认")
             runOnUiThread {
                 setConnStatus("已连接（未配对）", true)
@@ -998,7 +1067,11 @@ private fun setupControllerNav() {
                     device.sessionSecret, device.deviceId, packet.ts, packet.rid,
                     "", "", resultWire, Protocol.CMD_ACK
                 )
-                if (packet.sign != expected) {
+                // 常量时间比较（避免 String.equals 时序侧信道）；空签名 vs 非空 expected 仍判不等，下方特判不受影响
+                if (!java.security.MessageDigest.isEqual(
+                        expected.toByteArray(Charsets.UTF_8), packet.sign.toByteArray(Charsets.UTF_8)
+                    )
+                ) {
                     // 空签名 UNBOUND = 被控端会话已清空（被解绑）；rid 须命中本端在途请求，防公共 Broker 伪造
                     if (packet.sign.isBlank() && resultWire.startsWith("UNBOUND") &&
                         packet.rid.isNotBlank() &&
@@ -1477,7 +1550,9 @@ private fun setupControllerNav() {
         if (session.isBlank()) return false
         val json = packet.v?.toStringValue() ?: return false
         val expected = MqttSigner.sign(session, device.deviceId, packet.ts, packet.rid, packet.f, "s", json, MqttPacket.CMD_PUSH)
-        return expected == packet.sign
+        return java.security.MessageDigest.isEqual(
+            expected.toByteArray(Charsets.UTF_8), packet.sign.toByteArray(Charsets.UTF_8)
+        )
     }
 
     /**
@@ -1553,6 +1628,9 @@ private fun setupControllerNav() {
 
     /** 告警弹窗：用户点击「知道了」关闭；供实时告警与历史记录点击共用 */
     private fun showAlertDialog(record: AlertRecord) {
+        // MQTT 回调线程收到告警经 runOnUiThread 进入：Activity 正在 finish/已销毁时
+        // show 会抛 BadTokenException（解绑后延迟到达的告警），主线程调用无副作用（此刻不可能 finishing）
+        if (isFinishing || isDestroyed) return
         UnifiedDialogKit.showConfirm(
             ctx = this,
             title = record.title,
@@ -1568,7 +1646,9 @@ private fun setupControllerNav() {
         if (session.isBlank()) return false
         val json = packet.v?.toStringValue() ?: return false
         val expected = MqttSigner.sign(session, device.deviceId, packet.ts, packet.rid, packet.f, "s", json, Protocol.CMD_ALERT)
-        return expected == packet.sign
+        return java.security.MessageDigest.isEqual(
+            expected.toByteArray(Charsets.UTF_8), packet.sign.toByteArray(Charsets.UTF_8)
+        )
     }
 
     /** 持久化快照 JSON 到本地缓存（deviceId 维度），控制端重启/离线时仍可展示 */
@@ -1581,7 +1661,9 @@ private fun setupControllerNav() {
         if (session.isBlank()) return false
         val json = packet.v?.toStringValue() ?: return false
         val expected = MqttSigner.sign(session, device.deviceId, packet.ts, packet.rid, packet.f, "s", json, MqttPacket.CMD_RESP)
-        return expected == packet.sign
+        return java.security.MessageDigest.isEqual(
+            expected.toByteArray(Charsets.UTF_8), packet.sign.toByteArray(Charsets.UTF_8)
+        )
     }
 
     private fun parseSnapshot(json: String): DeviceSnapshot {
@@ -2515,7 +2597,9 @@ val calendar = CalendarSnapshot(
                 client?.publish("${MqttPacket.TOPIC_PREFIX}/${device.deviceId}/pair",
                     MqttMessage(gson.toJson(packet).toByteArray()).apply { qos = 1 })
                 bumpQuota(1, 0)
-            } catch (_: MqttException) {
+            } catch (e: MqttException) {
+                // 宽松模式（已确认）：行为不变，仅让失败可见；严格模式（等待送达+失败保留记录）如需再加
+                Log.w(TAG, "解绑 UB 发送失败，继续移除本机记录", e)
             }
             db.deviceDao().deleteById(device.deviceId)
             withContext(Dispatchers.Main) {
@@ -2527,7 +2611,7 @@ val calendar = CalendarSnapshot(
 
     /** 入站 rid 去重 + ±120s 时钟窗 */
     private fun acceptInboundRid(rid: String, ts: Long): Boolean {
-        if (rid.isBlank()) return true
+        // 已查证：DT 发包点 rid 全为 UUID.randomUUID()，不存在空 rid 的正常报文，删除原空 rid 放行分支
         val now = System.currentTimeMillis()
         if (kotlin.math.abs(now - ts) > 120_000L) {
             Log.w(TAG, "入站消息超时钟窗 rid=$rid")
@@ -2718,6 +2802,9 @@ val calendar = CalendarSnapshot(
 
     override fun onStop() {
         super.onStop()
+        // onCreate 早退（deviceId 为空/设备不存在 → finish+return）后 Android 仍会调用 onStop/onDestroy，
+        // lateinit device 未赋值时访问 device.bound 会抛 UninitializedPropertyAccessException（防御守卫）
+        if (!::device.isInitialized) return
         // B2：退后台后静默断连 —— 取消全部计时（15s 刷新/心跳/查询超时/配对超时），关闭 MQTT 长连接，
         // 实现「后台零耗电/零连接/零计时」。client 已 close 不会产生后台自动重连。
         disconnectMqtt()
@@ -2725,6 +2812,7 @@ val calendar = CalendarSnapshot(
 
     override fun onStart() {
         super.onStart()
+        if (!::device.isInitialized) return
         // B2：从后台回到前台时，若远程开关开启且当前没有活跃连接，则重连并恢复刷新
         // 解绑后 device.bound=false，不自动重连，需用户主动点「重新配对」
         if (remoteEnabled && mqttClient == null && device.bound) {
@@ -2737,6 +2825,9 @@ val calendar = CalendarSnapshot(
         super.onDestroy()
         mainHandler.removeCallbacks(PAIR_TIMEOUT_RUNNABLE)
         mainHandler.removeCallbacks(queryTimeoutRunnable)
+        // 清掉仍在排队的动作兜底/告警查询超时回调（防 Activity 销毁后回调改写已销毁 UI / 泄漏最长 10s）
+        mainHandler.removeCallbacks(actionBusyResetRunnable)
+        mainHandler.removeCallbacks(alertQueryTimeoutRunnable)
         // 清理快捷操作反馈弹窗与计时（防泄漏/防残留回调改写 UI）
         punchResultPending = false
         attendanceResultPending = false
