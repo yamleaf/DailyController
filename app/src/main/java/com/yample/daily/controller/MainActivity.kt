@@ -65,9 +65,13 @@ class MainActivity : AppCompatActivity() {
 
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
+    /** 顶栏时钟是否在跑（onResume 开 / onStop 关；runnable 自续期，标志防退后台后继续每秒 setTitle + 格式化） */
+    private var timeClockActive = false
+
     /** 每秒刷新顶栏时间日期（参考被控端格式：title=时间，subtitle=日期） */
     private val timeUpdateRunnable: Runnable = object : Runnable {
         override fun run() {
+            if (!timeClockActive) return
             val currentTime = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.CHINA)
                 .format(java.util.Date())
             val currentDate = java.text.SimpleDateFormat("yyyy年MM月dd日 EEEE", java.util.Locale.CHINA)
@@ -100,8 +104,7 @@ class MainActivity : AppCompatActivity() {
         // 设备列表下拉刷新：重新读库 + 重新探测在线状态
         binding.swipeRefresh.setOnRefreshListener { loadDevices() }
 
-        // 顶栏显示当前时间日期（参考被控端），移除菜单设置入口
-        mainHandler.post(timeUpdateRunnable)
+        // 顶栏时间日期：由 onResume 统一启动（onStop 停止），此处不再手动 post，避免重复排队
 
         binding.btnEmptyScan.setOnClickListener { startScan() }
 
@@ -199,7 +202,7 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "剪贴板为空，请先在被控端「远程控制」页点「生成绑定二维码」（会自动复制到剪贴板）", Toast.LENGTH_LONG).show()
                 return
             }
-            Log.d(TAG, "importFromClipboard: $text")
+            // 完整文本含 ctlPass + pairingToken（可接管设备），不落日志；下方「解析成功」行已含 broker/deviceId 足供排障
             try {
                 val payload = gson.fromJson(text, BindingPayload::class.java)
                 if (payload != null && payload.broker.isNotBlank() && payload.deviceId.isNotBlank()) {
@@ -226,7 +229,7 @@ class MainActivity : AppCompatActivity() {
         if ("text/plain" != intent.type) return
         val text = intent.getStringExtra(Intent.EXTRA_TEXT)
         if (text.isNullOrBlank()) return
-        Log.d(TAG, "handleSendTextIntent: $text")
+        Log.d(TAG, "handleSendTextIntent: len=${text.length}")   // 不打印明文：含 ctlPass + pairingToken
         try {
             val payload = gson.fromJson(text, BindingPayload::class.java)
             if (payload != null && payload.broker.isNotBlank() && payload.deviceId.isNotBlank()) {
@@ -268,6 +271,10 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         loadDevices()
+        // 顶栏时钟：回前台续跑（先清再排，避免重复排队）
+        timeClockActive = true
+        mainHandler.removeCallbacks(timeUpdateRunnable)
+        mainHandler.post(timeUpdateRunnable)
         // 离线通知开关开启时，回到前台确保监测服务在跑（进程被杀后由 START_STICKY 或此处拉起）
         if (OfflineMonitorService.isEnabled(this)) {
             try {
@@ -280,6 +287,9 @@ class MainActivity : AppCompatActivity() {
     /** 离开列表页（切到其他页面 / 退到后台）：清空本次停留的会话验证标记，下次进入重新发 QUERY 校验 */
     override fun onStop() {
         sessionCheckedThisVisit.clear()
+        // 退后台停顶栏时钟（runnable 自续期，仅移除会漏掉正在排队的那帧）
+        timeClockActive = false
+        mainHandler.removeCallbacks(timeUpdateRunnable)
         super.onStop()
     }
 
@@ -566,12 +576,16 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch(Dispatchers.IO) {
             var result: Boolean? = null
             var unbound = false
+            // 供 finally 兜底关闭的临时客户端引用：探活路径 connect/subscribe/latch 任一失败
+            // 或协程被取消时，若只在 try 正常末尾 close，异常路径会泄漏短连接（句柄+broker 侧会话）
+            var probeClient: MqttClient? = null
             try {
                 val client = MqttClient(
                     BrokerUtils.normalizeBroker(device.broker),
                     "ctl-probe-${device.deviceId}",
                     MemoryPersistence()
                 )
+                probeClient = client
                 val opts = MqttConnectOptions().apply {
                     userName = device.ctlUser
                     password = device.ctlPass.toCharArray()
@@ -663,8 +677,14 @@ class MainActivity : AppCompatActivity() {
                 }
                 client.disconnect()
                 client.close()
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                // 不能吞 CancellationException：finally 需要执行才能 close 客户端；吞掉会导致
+                // 取消后 disconnect/close 永不执行（泄漏 broker 侧会话）
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 result = null
+            } finally {
+                // 异常/取消路径兜底关闭（正常路径已在上面 close，重复 close 无副作用、抛错被吞）
+                runCatching { probeClient?.close() }
             }
             if (unbound) {
                 applyUnbound(device)
@@ -821,7 +841,10 @@ class MainActivity : AppCompatActivity() {
                             device.sessionSecret, device.deviceId, packet.ts, packet.rid,
                             "", "s", state, Protocol.CMD_STATUS
                         )
-                        if (expected == packet.sign) return ProbeResult.Unbound
+                        if (java.security.MessageDigest.isEqual(
+                                expected.toByteArray(Charsets.UTF_8), packet.sign.toByteArray(Charsets.UTF_8)
+                            )
+                        ) return ProbeResult.Unbound
                     }
                 }
             } catch (_: Exception) {
