@@ -41,7 +41,9 @@ class ServerlessManagerActivity : AppCompatActivity() {
         UiInsets.applyStatusBarPadding(this, binding.appBar)
 
         db = Room.databaseBuilder(this, AppDatabase::class.java, "daily-db")
-            .addMigrations(AppDatabase.MIGRATION_4_5)
+            // 对齐 DeviceControlActivity/MainActivity：AppDatabase 目标 version=6，缺 5_6 时旧库会被
+            // fallbackToDestructiveMigration 整表清空（用户已存后端/设备数据丢失），故必须带上
+            .addMigrations(AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6)
             .fallbackToDestructiveMigration(dropAllTables = true)
             .build()
 
