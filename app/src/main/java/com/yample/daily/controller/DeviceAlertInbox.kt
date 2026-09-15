@@ -125,6 +125,11 @@ object DeviceAlertInbox {
                 title = "🔄 任务已重置"
                 from
             }
+            Protocol.ALERT_TYPE_TASK_SKIP -> {
+                val from = obj.get("msg")?.asString ?: "任务因冲突已跳过"
+                title = "⏭️ 任务已跳过"
+                from
+            }
             Protocol.ALERT_TYPE_UNBOUND -> {
                 val from = obj.get("msg")?.asString ?: "解除绑定"
                 title = "🔗 设备已解绑"

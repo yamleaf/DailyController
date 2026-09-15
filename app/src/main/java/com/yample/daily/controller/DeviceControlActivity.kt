@@ -1582,6 +1582,15 @@ private fun setupControllerNav() {
                     overviewFragment.refreshAlerts(AlertHistory.load(this, device.deviceId))
                     return@runOnUiThread
                 }
+                // 远程打卡因 Shizuku 冲突被跳过：若等待弹窗仍开着，原位刷新为跳过结果（琥珀色），避免空等到超时
+                if (record.type == Protocol.ALERT_TYPE_TASK_SKIP) {
+                    if (punchWaitDialog?.isShowing == true) {
+                        finishPunchWaitInPlace(record.msg, isTimeout = false, isSkip = true)
+                        overviewFragment.refreshAlerts(AlertHistory.load(this, device.deviceId))
+                        return@runOnUiThread
+                    }
+                    // 无等待弹窗（如定时跳过）：走下方通用告警弹窗
+                }
                 // feat_shiziku：被控端请求短信验证码 → 统一等待弹窗刷新为输入框回填下发（无等待弹窗时降级独立弹窗）
                 if (record.type == Protocol.ALERT_TYPE_VERIFY_CODE_REQUEST) {
                     showVerifyCodeRequestDialog(record.msg)
@@ -2376,8 +2385,8 @@ val calendar = CalendarSnapshot(
         mainHandler.postDelayed(punchWaitTick, 1000L)
     }
 
-    /** 打卡结果原位刷新：等待弹窗内容直接变为结果（标题同步改「打卡结果」），两步合一步 */
-    private fun finishPunchWaitInPlace(msg: String, isTimeout: Boolean) {
+    /** 打卡结果原位刷新：等待弹窗内容直接变为结果（标题同步改「打卡结果」/「任务已跳过」），两步合一步 */
+    private fun finishPunchWaitInPlace(msg: String, isTimeout: Boolean, isSkip: Boolean = false) {
         mainHandler.removeCallbacks(punchWaitTick)
         punchResultPending = false
         // 结果已交付（或超时），无论 ACK 是否及时命中都立即恢复快捷按钮
@@ -2388,9 +2397,13 @@ val calendar = CalendarSnapshot(
         val firstLine = lines.getOrNull(0).orEmpty()
         val hint = lines.getOrNull(1).orEmpty()
         val dp = { v: Float -> (v * resources.displayMetrics.density + 0.5f).toInt() }
-        val statusColor = if (isTimeout) 0xFFB45309.toInt() else 0xFF1B7A43.toInt()
+        // 跳过/超时：琥珀色；成功：绿色。跳过不得走成功绿，避免「看起来像打卡成功」
+        val statusColor = when {
+            isSkip || isTimeout -> 0xFFB45309.toInt()
+            else -> 0xFF1B7A43.toInt()
+        }
         punchWaitContainer?.removeAllViews()
-        // 第一行：时间(左, weight1) + 状态(右)，中间留白
+        // 第一行：时间(左, weight1) + 状态(右)，中间留白；约定 msg 形如「HH:mm:ss 状态…」
         val parts = firstLine.split(" ").filter { it.isNotBlank() }
         val time = parts.firstOrNull().orEmpty()
         val status = parts.drop(1).joinToString(" ")
@@ -2413,7 +2426,7 @@ val calendar = CalendarSnapshot(
                 setTextColor(statusColor)
             })
         })
-        // 超时第二行小字提示（居中灰色）
+        // 超时/跳过第二行小字提示（居中灰色）
         if (hint.isNotBlank()) {
             punchWaitContainer?.addView(android.widget.TextView(this).apply {
                 gravity = android.view.Gravity.CENTER
@@ -2423,7 +2436,7 @@ val calendar = CalendarSnapshot(
                 setTextColor(0xFF9E9E9E.toInt())
             })
         }
-        punchWaitDialog?.setTitle("打卡结果")
+        punchWaitDialog?.setTitle(if (isSkip) "任务已跳过" else "打卡结果")
     }
 
     private var attendanceWaitDialog: androidx.appcompat.app.AlertDialog? = null
