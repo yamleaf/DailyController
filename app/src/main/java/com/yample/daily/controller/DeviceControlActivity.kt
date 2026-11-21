@@ -1897,6 +1897,7 @@ val calendar = CalendarSnapshot(
             Protocol.ACTION_SIMULATE_PUNCH -> "模拟打卡"
             Protocol.ACTION_SCREENSHOT -> "手动截屏"
             Protocol.ACTION_CUSTOM_1 -> mirror["sz_opName1"]?.takeIf { it.isNotBlank() } ?: "操作1"
+            Protocol.ACTION_CLEAR_BACKEND -> "清理打卡后台"
             else -> "身份验证"
         }
         showShizukuWaitDialog(label)

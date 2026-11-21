@@ -254,7 +254,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
                     android:columnCount="3"
-                    android:rowCount="2">
+                    android:rowCount="3">
 
 
 <LinearLayout
@@ -455,6 +455,40 @@
                             android:text="操作1"
                             android:textSize="11sp"
                             android:textColor="@color/md_onSuccessContainer" />
+                    </LinearLayout>
+
+
+<LinearLayout
+                        android:id="@+id/btnClearBackend"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_columnWeight="1"
+                        android:layout_margin="4dp"
+                        android:gravity="center"
+                        android:orientation="vertical"
+                        android:paddingHorizontal="4dp"
+                        android:paddingTop="14dp"
+                        android:paddingBottom="12dp"
+                        android:background="@drawable/bg_action_tile"
+                        android:backgroundTint="@color/md_errorContainer"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:foreground="?attr/selectableItemBackground">
+
+                        <ImageView
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:src="@drawable/ic_power"
+                            app:tint="@color/md_error"
+                            android:contentDescription="@null" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:text="清理打卡后台"
+                            android:textSize="11sp"
+                            android:textColor="@color/md_onErrorContainer" />
                     </LinearLayout>
 
 

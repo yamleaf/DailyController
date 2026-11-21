@@ -42,6 +42,7 @@ class ShizukuSettingsFragment : Fragment(), SnapshotFragment {
         binding.btnVerifyLogin.setOnClickListener { if (editable()) sendAction(Protocol.ACTION_VERIFY_LOGIN) }
         binding.btnScreenshot.setOnClickListener { if (editable()) sendAction(Protocol.ACTION_SCREENSHOT) }
         binding.btnCustom1.setOnClickListener { if (editable()) sendAction(Protocol.ACTION_CUSTOM_1) }
+        binding.btnClearBackend.setOnClickListener { if (editable()) sendAction(Protocol.ACTION_CLEAR_BACKEND) }
         // 激活 Shizuku：与操作区可用性不同——它正是「已掉线/未授权」时才需要，故只要求已绑定（commandsEnabled），不要求已授权
         binding.btnActivateShizuku.setOnClickListener { activateShizuku() }
         snapshot?.let { render(it) }
@@ -64,9 +65,11 @@ class ShizukuSettingsFragment : Fragment(), SnapshotFragment {
         if (_binding != null) render(s)
     }
 
-    /** 激活 Shizuku：下发 FIELD_SHIZUKU_START，让被控端发广播拉起 Shizuku manager（不要求已授权） */
+    /** 激活 Shizuku：下发 FIELD_SHIZUKU_START，让被控端发广播拉起 Shizuku manager（仅服务不可用时可触发） */
     private fun activateShizuku() {
-        if (!commandsEnabled) return
+        // 双保险：服务正常时不下发（按钮已灰，此处再拦一道防时序竞态）
+        val serviceUnavailable = strOf("sz_status").ifBlank { "不可用" } == "不可用"
+        if (!commandsEnabled || !serviceUnavailable) return
         val act = activity as? DeviceControlActivity ?: return
         act.sendShizukuStart()
         Toast.makeText(requireContext(), "已下发「激活 Shizuku」指令", Toast.LENGTH_SHORT).show()
@@ -114,6 +117,7 @@ class ShizukuSettingsFragment : Fragment(), SnapshotFragment {
         binding.btnVerifyLogin.isEnabled = on
         binding.btnScreenshot.isEnabled = on
         binding.btnCustom1.isEnabled = on
+        binding.btnClearBackend.isEnabled = on
         val alpha = if (on) 1f else 0.45f
         binding.btnManualLogin.alpha = alpha
         binding.btnIdentityVerify.alpha = alpha
@@ -121,9 +125,12 @@ class ShizukuSettingsFragment : Fragment(), SnapshotFragment {
         binding.btnVerifyLogin.alpha = alpha
         binding.btnScreenshot.alpha = alpha
         binding.btnCustom1.alpha = alpha
-        // 激活按钮：只受绑定状态影响（掉线/未授权正是它的使用场景，不随 sz_granted 置灰）
-        binding.btnActivateShizuku.isEnabled = commandsEnabled
-        binding.btnActivateShizuku.alpha = if (commandsEnabled) 1f else 0.45f
+        binding.btnClearBackend.alpha = alpha
+        // 激活按钮：仅当服务不可用（sz_status=不可用，即掉线/未启动）时可用——服务正常时再下发是冗余的，故灰掉。
+        val serviceUnavailable = strOf("sz_status").ifBlank { "不可用" } == "不可用"
+        val canActivate = commandsEnabled && serviceUnavailable
+        binding.btnActivateShizuku.isEnabled = canActivate
+        binding.btnActivateShizuku.alpha = if (canActivate) 1f else 0.45f
     }
 
     private fun sendAction(action: String) {
@@ -136,6 +143,7 @@ class ShizukuSettingsFragment : Fragment(), SnapshotFragment {
             Protocol.ACTION_SIMULATE_PUNCH -> "模拟打卡"
             Protocol.ACTION_SCREENSHOT -> "手动截屏"
             Protocol.ACTION_CUSTOM_1 -> op1
+            Protocol.ACTION_CLEAR_BACKEND -> "清理打卡后台"
             else -> action
         }
         act.sendShizukuAction(action)
