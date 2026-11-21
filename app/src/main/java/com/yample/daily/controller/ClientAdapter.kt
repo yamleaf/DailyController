@@ -1,6 +1,5 @@
 package com.yample.daily.controller
 
-import android.graphics.Color
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.core.content.ContextCompat
@@ -27,7 +26,9 @@ class ClientAdapter(
         val dot = holder.binding.dotStatus
         dot.background = android.graphics.drawable.GradientDrawable().apply {
             shape = android.graphics.drawable.GradientDrawable.OVAL
-            setColor(if (item.connected) Color.GREEN else Color.GRAY)
+            setColor(
+                ContextCompat.getColor(ctx, if (item.connected) R.color.md_tertiary else R.color.md_outline)
+            )
         }
         holder.binding.tvClientId.text = item.clientId
         val sub = buildString {

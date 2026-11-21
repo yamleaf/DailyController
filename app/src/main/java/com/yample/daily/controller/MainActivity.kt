@@ -337,11 +337,15 @@ class MainActivity : AppCompatActivity() {
                         } else {
                             onlineState[device.deviceId] = cached.first
                             currentAdapter?.setOnline(device.deviceId, cached.first)
-                            // 缓存在线但本次进入尚未验证会话：仍补发一次签名 QUERY 校验绑定状态
+                            // 缓存在线但本次进入尚未验证会话：仍补发一次签名 QUERY 校验绑定状态。
+                            // 与 probeOnline 一样按 SESSION_CHECK_INTERVAL_MS 节流，避免短往返内重复验签
                             if (cached.first == true && device.sessionSecret.isNotBlank() && device.bound &&
                                 sessionCheckedThisVisit.add(device.deviceId)
                             ) {
-                                sessionQueryOnly(device)
+                                val age = OnlineStateCache.sessionCheckAgeMs(device.deviceId)
+                                val needSessionCheck =
+                                    age == null || age >= OnlineStateCache.SESSION_CHECK_INTERVAL_MS
+                                if (needSessionCheck) sessionQueryOnly(device)
                             }
                         }
                     }

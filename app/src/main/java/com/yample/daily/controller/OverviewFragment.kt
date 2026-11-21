@@ -2,7 +2,6 @@ package com.yample.daily.controller
 
 import android.animation.ArgbEvaluator
 import android.animation.ValueAnimator
-import android.graphics.Color
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -21,6 +20,29 @@ import java.util.Locale
 import kotlin.collections.ArrayDeque
 
 enum class SnapshotHint { NONE, WAITING, FAILED, DISABLED }
+
+/**
+ * MQTT 连接状态（UI 层语义，取代原先靠字符串 contains 匹配的脆弱做法）。
+ *
+ * @property online     是否在线（决定状态灯绿/灰，及快捷动作是否可用）
+ * @property transition 是否「连接中/探活中」过渡态（仅用于判断是否抑制离线横幅）
+ */
+enum class ConnState(val online: Boolean, val transition: Boolean) {
+    ONLINE(true, false),            // 在线（已配对 / 心跳 HB / 已连接已配对）——绿、稳态
+    CONNECTED_PAIRING(true, false), // 已连接（配对中…）——琥珀
+    CONNECTED_UNPAIRED(true, false),// 已连接（未配对）——琥珀
+    SUB_DENIED(true, false),        // 已连接（订阅被拒）——红
+    PAIR_SEND_FAILED(true, false),  // 已连接（配对发送失败）——红
+    PAIR_RETRYING(true, false),     // 已连接（配对重试 N/M）——琥珀
+    CONNECTING(false, true),        // 连接中… ——灰、过渡态
+    PROBING(false, true),           // 探活中… ——琥珀、过渡态
+    MQTT_CLOSED(false, false),      // MQTT 已关闭——灰
+    DISCONNECTED(false, false),     // 连接断开——灰
+    NEED_SCAN(false, false),        // 未配对，请重新扫码——琥珀
+    FAILED(false, false),           // 连接失败——红（状态灯可点击重试）
+    OFFLINE(false, false),          // 设备离线 / 设备离线（无响应）——红
+    UNBOUND(false, false),          // 已解绑 / 已被强制解绑——灰
+}
 
 /** B5：最近指令回执（label=指令名，result=回执结果，ts=回执时间戳） */
 data class RecentCommand(val label: String?, val result: String?, val ts: Long)
@@ -47,12 +69,11 @@ class OverviewFragment : Fragment(), SnapshotFragment {
     private val swipeRefreshRunnable = Runnable { triggerRefresh() }
     private val swipeRefreshDelayMs = 3000L
     private var remoteInitializing = false
-    /** 视图就绪前暂存的连接状态文案（onCreate 同步调用可能早于 onCreateView） */
-    private var pendingConnStatus: Pair<String, Boolean>? = null
-    /** 状态灯：最后状态文案与 online 标记，供 render 重绘时复用 */
-    private var lastConnText = ""
-    private var lastConnOnline = false
-    private var appliedStatusKey: String? = null
+    /** 视图就绪前暂存的连接状态（onCreate 同步调用可能早于 onCreateView） */
+    private var pendingConnStatus: ConnState? = null
+    /** 状态灯：最后连接状态，供 render 重绘复用 */
+    private var lastConnState: ConnState = ConnState.MQTT_CLOSED
+    private var appliedConnState: ConnState? = null
     /** 首帧淡入：首次 render 时内容从半透明淡入，配合探活进度条给出「数据到达」观感 */
     private var firstRender = true
     /** D2：快捷动作是否处于下发中（防重复点击 + 加载态） */
@@ -97,9 +118,9 @@ class OverviewFragment : Fragment(), SnapshotFragment {
         binding.btnActLoopOff.setOnClickListener { onLoopToggle?.invoke(false) }
 
         snapshot?.let { render(it) }
-        pendingConnStatus?.let { (text, online) ->
+        pendingConnStatus?.let { state ->
             pendingConnStatus = null
-            setConnStatusText(text, online)
+            setConnStatusText(state)
         }
     }
 
@@ -192,11 +213,10 @@ class OverviewFragment : Fragment(), SnapshotFragment {
         if (isAdded && _binding != null) render(snapshot)
     }
 
-    fun setConnStatusText(text: String, online: Boolean) {
-        lastConnText = text
-        lastConnOnline = online
+    fun setConnStatusText(state: ConnState) {
+        lastConnState = state
         if (!isAdded || _binding == null) {
-            pendingConnStatus = text to online
+            pendingConnStatus = state
             return
         }
         applyConnStatus()
@@ -215,16 +235,13 @@ class OverviewFragment : Fragment(), SnapshotFragment {
     /** 状态灯：用球形渐变 + 呼吸脉冲表达连接状态，取代原「已连接（已配对）」式冗长文案 */
     private fun applyConnStatus() {
         if (!isAdded || _binding == null) return
-        val ctx = requireContext()
-        val key = "$lastConnText|$lastConnOnline"
-        if (appliedStatusKey == key) return
-        appliedStatusKey = key
-        resolveStatus(lastConnText, lastConnOnline, ctx)
+        if (appliedConnState == lastConnState) return
+        appliedConnState = lastConnState
 
         // 使用球面渐变圆形作为主状态点（内置高光，不参与 tint）
-        binding.dotStatus.setBackgroundResource(sphereForStatus(lastConnText, lastConnOnline))
+        binding.dotStatus.setBackgroundResource(sphereForStatus(lastConnState))
         // D6：连接失败时状态灯可点击重试
-        val failed = lastConnText == "连接失败"
+        val failed = lastConnState == ConnState.FAILED
         binding.dotStatus.isClickable = failed
         binding.dotStatus.setOnClickListener { if (failed) onRetryClick?.invoke() }
         // 解绑态重配对入口
@@ -272,39 +289,26 @@ class OverviewFragment : Fragment(), SnapshotFragment {
         }
     }
 
-    /** 状态 → (颜色, 是否脉冲)：绿=在线已配对 / 琥珀=配对中·未配对·连接中 / 红=失败·错误·无心跳 / 灰=已解绑·离线·连接中 */
-    private fun resolveStatus(text: String, online: Boolean, ctx: android.content.Context): Pair<Int, Boolean> {
-        val green = Color.parseColor("#16A34A")
-        val amber = Color.parseColor("#F59E0B")
-        val red = ctx.getColor(R.color.md_error)
-        val gray = ctx.getColor(R.color.md_outline)
-        return when {
-            text == "连接失败" -> red to false
-            text.contains("已解绑") || text.contains("已被强制解绑") -> gray to false
-            text.contains("订阅被拒") || text.contains("配对发送失败") -> red to false
-            // 心跳探活检测到的被控端离线：红灯 + 不脉冲（不像「连接中」那样的灰色脉冲）
-            text.contains("无心跳响应") || text.contains("设备离线") -> red to false
-            text.contains("配对中") || text.contains("配对重试") || text.contains("未配对") -> amber to true
-            text == "探活中…" -> amber to true
-            text.contains("连接中") -> gray to true
-            text.contains("已配对") -> green to false
-            text.contains("已连接") -> (if (online) green else gray) to false
-            else -> (if (online) green else gray) to false
-        }
-    }
-
-    /** 状态文案 → 球面渐变 drawable（与 resolveStatus 状态逻辑一致） */
-    private fun sphereForStatus(text: String, online: Boolean): Int = when {
-        text == "连接失败" -> R.drawable.bg_sphere_error
-        text.contains("已解绑") || text.contains("已被强制解绑") -> R.drawable.bg_sphere_offline
-        text.contains("订阅被拒") || text.contains("配对发送失败") -> R.drawable.bg_sphere_error
-        text.contains("无心跳响应") || text.contains("设备离线") -> R.drawable.bg_sphere_error
-        text.contains("配对中") || text.contains("配对重试") || text.contains("未配对") -> R.drawable.bg_sphere_pairing
-        text == "探活中…" -> R.drawable.bg_sphere_pairing
-        text.contains("连接中") -> R.drawable.bg_sphere_offline
-        text.contains("已配对") -> R.drawable.bg_sphere_online
-        text.contains("已连接") -> if (online) R.drawable.bg_sphere_online else R.drawable.bg_sphere_offline
-        else -> if (online) R.drawable.bg_sphere_online else R.drawable.bg_sphere_offline
+    /** 连接状态 → 球面渐变 drawable（球面渐变灯取代文字，仅凭颜色/形状表达状态） */
+    private fun sphereForStatus(state: ConnState): Int = when (state) {
+        // 红：失败类
+        ConnState.FAILED,
+        ConnState.SUB_DENIED,
+        ConnState.PAIR_SEND_FAILED,
+        ConnState.OFFLINE -> R.drawable.bg_sphere_error
+        // 灰：断开/解绑/关闭类
+        ConnState.MQTT_CLOSED,
+        ConnState.DISCONNECTED,
+        ConnState.UNBOUND,
+        ConnState.CONNECTING -> R.drawable.bg_sphere_offline
+        // 琥珀：配对/待扫类
+        ConnState.CONNECTED_PAIRING,
+        ConnState.CONNECTED_UNPAIRED,
+        ConnState.PAIR_RETRYING,
+        ConnState.NEED_SCAN,
+        ConnState.PROBING -> R.drawable.bg_sphere_pairing
+        // 绿：在线稳态
+        ConnState.ONLINE -> R.drawable.bg_sphere_online
     }
 
     /** B4：断连/未连接时禁用并置灰动作按钮，避免下发无效指令 */
