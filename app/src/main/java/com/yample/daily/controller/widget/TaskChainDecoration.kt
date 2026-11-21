@@ -26,7 +26,8 @@ class TaskChainDecoration(context: Context) : RecyclerView.ItemDecoration() {
 
     private val density = context.resources.displayMetrics.density
 
-    private val pulseColor = ContextCompat.getColor(context, R.color.md_primary)
+    /** 光点能量色：亮青蓝（接近参考 HTML 的荧光青蓝，浅色轨道上也醒目） */
+    private val pulseColor = Color.parseColor("#40C4FF")
 
     /** 轨道列中心 x（12dp paddingStart + 40dp 轨道半宽） */
     private val trackCenterX = 32f * density
@@ -38,10 +39,20 @@ class TaskChainDecoration(context: Context) : RecyclerView.ItemDecoration() {
         color = ContextCompat.getColor(context, R.color.md_outlineVariant)
     }
 
-    // 流动脉冲：白色高光核心 + 主题蓝半透明光晕 + 渐隐彗尾
-    private val flowGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    // 流动脉冲：多层光晕（模拟发光）+ 白色高光核心 + 渐隐彗尾
+    private val glowOuterPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
-        color = ColorUtils.setAlphaComponent(pulseColor, 0x40)
+        color = ColorUtils.setAlphaComponent(pulseColor, 0x18)
+    }
+
+    private val glowMidPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = ColorUtils.setAlphaComponent(pulseColor, 0x38)
+    }
+
+    private val glowInnerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = ColorUtils.setAlphaComponent(pulseColor, 0x66)
     }
 
     private val flowCorePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -146,8 +157,10 @@ class TaskChainDecoration(context: Context) : RecyclerView.ItemDecoration() {
             val r = 1.8f * density * (1f - frac * 0.5f)
             canvas.drawCircle(x, y, r, trailPaint)
         }
-        // 光点：光晕 + 白色核心
-        canvas.drawCircle(x, pulseY, 5f * density, flowGlowPaint)
-        canvas.drawCircle(x, pulseY, 2f * density, flowCorePaint)
+        // 光点：多层光晕（模拟发光）+ 白色高光核心
+        canvas.drawCircle(x, pulseY, 9f * density, glowOuterPaint)
+        canvas.drawCircle(x, pulseY, 5.5f * density, glowMidPaint)
+        canvas.drawCircle(x, pulseY, 3.2f * density, glowInnerPaint)
+        canvas.drawCircle(x, pulseY, 1.8f * density, flowCorePaint)
     }
 }
