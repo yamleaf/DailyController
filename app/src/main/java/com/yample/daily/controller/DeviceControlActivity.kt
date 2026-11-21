@@ -2278,6 +2278,12 @@ val calendar = CalendarSnapshot(
             MqttPacket.ACTION_STOP -> "终止任务"
             MqttPacket.ACTION_ATTENDANCE -> "考勤记录"
             MqttPacket.ACTION_SCREENSHOT -> "截屏"
+            Protocol.ACTION_MANUAL_LOGIN -> "密码登录"
+            Protocol.ACTION_VERIFY_LOGIN -> "验证码登录"
+            Protocol.ACTION_IDENTITY_VERIFY -> "身份验证"
+            Protocol.ACTION_SIMULATE_PUNCH -> "模拟打卡"
+            Protocol.ACTION_CLEAR_BACKEND -> "清理打卡后台"
+            Protocol.ACTION_CUSTOM_1 -> "操作1"
             else -> action
         }
         // 必须在 publish 之前登记：ACK 可能在 publish 返回前就到达
