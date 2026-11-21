@@ -10,6 +10,7 @@ import com.google.android.material.timepicker.MaterialTimePicker
 import com.google.android.material.timepicker.TimeFormat
 import com.yample.daily.controller.databinding.DialogTaskBinding
 import com.yample.daily.controller.databinding.FragmentTasksBinding
+import com.yample.daily.controller.widget.TaskChainDecoration
 import com.yample.mqttprotocol.dialog.UnifiedDialogKit
 
 class TasksFragment : Fragment(), SnapshotFragment {
@@ -54,6 +55,7 @@ class TasksFragment : Fragment(), SnapshotFragment {
             })
         binding.rvTasks.layoutManager = LinearLayoutManager(requireContext())
         binding.rvTasks.adapter = taskAdapter
+        binding.rvTasks.addItemDecoration(TaskChainDecoration(requireContext()))
         binding.btnAddTask.setOnClickListener { showAddTaskPicker() }
         // 视图可能晚于禁用指令创建（懒加载 tab），创建后立即应用置灰态
         binding.btnAddTask.isEnabled = commandsEnabled

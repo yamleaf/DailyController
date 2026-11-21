@@ -1,5 +1,6 @@
 package com.yample.daily.controller
 
+import android.content.res.ColorStateList
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.core.content.ContextCompat
@@ -27,21 +28,25 @@ class TaskRowAdapter(
         holder.binding.tvTaskName.visibility = if (item.name.isNotBlank()) android.view.View.VISIBLE else android.view.View.GONE
         holder.binding.tvTaskSub.text = "实际执行 ${item.actualTime ?: item.time}"
         holder.binding.tvTaskStatus.text = item.statusLabel
-        val (color, bg) = statusStyle(item.status)
-        holder.binding.tvTaskStatus.setTextColor(ContextCompat.getColor(holder.itemView.context, color))
-        holder.binding.tvTaskStatus.background.setTint(ContextCompat.getColor(holder.itemView.context, bg))
+        val (color, bg, onBg) = statusStyle(item.status)
+        val ctx = holder.itemView.context
+        holder.binding.tvTaskStatus.setTextColor(ContextCompat.getColor(ctx, color))
+        holder.binding.tvTaskStatus.background.setTint(ContextCompat.getColor(ctx, bg))
+        // 链式节点：圆底背景按状态染色 + 图标 tint 对齐容器对比色
+        holder.binding.chainDot.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(ctx, bg))
+        holder.binding.imgTaskIcon.imageTintList = ColorStateList.valueOf(ContextCompat.getColor(ctx, onBg))
         holder.binding.btnEditTask.setOnClickListener { onEdit(item) }
         holder.binding.btnDeleteTask.setOnClickListener { onDelete(item) }
     }
 
-    private fun statusStyle(status: String): Pair<Int, Int> {
+    private fun statusStyle(status: String): Triple<Int, Int, Int> {
         return when (status) {
-            "success" -> R.color.md_tertiary to R.color.md_tertiaryContainer
-            "timeout" -> R.color.md_error to R.color.md_errorContainer
-            "pending" -> R.color.md_primary to R.color.md_primaryContainer
-            "skip" -> R.color.md_skip to R.color.md_skipContainer
-            "expired" -> R.color.md_onSurfaceVariant to R.color.md_surfaceVariant
-            else -> R.color.md_onSurfaceVariant to R.color.md_surfaceVariant
+            "success" -> Triple(R.color.md_tertiary, R.color.md_tertiaryContainer, R.color.md_onTertiaryContainer)
+            "timeout" -> Triple(R.color.md_warning, R.color.md_warningContainer, R.color.md_onWarningContainer)
+            "pending" -> Triple(R.color.md_primary, R.color.md_primaryContainer, R.color.md_onPrimaryContainer)
+            "skip" -> Triple(R.color.md_skip, R.color.md_skipContainer, R.color.md_onSurfaceVariant)
+            "expired" -> Triple(R.color.md_onSurfaceVariant, R.color.md_surfaceVariant, R.color.md_onSurfaceVariant)
+            else -> Triple(R.color.md_onSurfaceVariant, R.color.md_surfaceVariant, R.color.md_onSurfaceVariant)
         }
     }
 

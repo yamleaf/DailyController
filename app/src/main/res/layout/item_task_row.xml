@@ -10,13 +10,29 @@
     android:paddingTop="10dp"
     android:paddingBottom="10dp">
 
-    <ImageView 
-        android:layout_width="34dp"
-        android:layout_height="34dp"
-        android:background="@drawable/bg_circle_tertiary"
-        android:padding="8dp"
-        android:src="@drawable/ic_timer"
-        app:tint="@color/md_onTertiaryContainer" android:contentDescription="@null" />
+    <!-- 链式轨道列：节点圆底图标 + 上下连线（连线由 TaskChainDecoration 绘制） -->
+    <FrameLayout
+        android:id="@+id/chainTrack"
+        android:layout_width="40dp"
+        android:layout_height="match_parent">
+
+        <FrameLayout
+            android:id="@+id/chainDot"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
+            android:layout_gravity="center"
+            android:background="@drawable/bg_circle_tertiary">
+
+            <ImageView
+                android:id="@+id/imgTaskIcon"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:padding="8dp"
+                android:src="@drawable/ic_timer"
+                app:tint="@color/md_onTertiaryContainer"
+                android:contentDescription="@null" />
+        </FrameLayout>
+    </FrameLayout>
 
     <LinearLayout
         android:layout_width="0dp"

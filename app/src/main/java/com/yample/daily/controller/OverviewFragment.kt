@@ -246,10 +246,15 @@ class OverviewFragment : Fragment(), SnapshotFragment {
         binding.dotStatus.setOnClickListener { if (failed) onRetryClick?.invoke() }
         // 解绑态重配对入口
         binding.btnRePair.setOnClickListener { onRePairClick?.invoke() }
+        // 在线时状态灯呼吸脉冲，让「设备在线」更醒目
+        if (lastConnState == ConnState.ONLINE) startOnlinePulse() else stopOnlinePulse()
     }
 
     /** 解绑态显示「重新配对」入口；配对成功后隐藏 */
     private var rePairBreathAnimator: ValueAnimator? = null
+
+    /** 在线状态灯呼吸动画 */
+    private var onlinePulseAnimator: ValueAnimator? = null
 
     /** 解绑态显示「重新配对」入口（置顶）；显示时启动呼吸描边动画，隐藏时停止 */
     fun setRePairVisible(visible: Boolean) {
@@ -287,6 +292,27 @@ class OverviewFragment : Fragment(), SnapshotFragment {
                     ContextCompat.getColor(requireContext(), R.color.re_pair_accent)
                 )
         }
+    }
+
+    /** 在线状态灯呼吸：alpha 在 0.45↔1.0 循环（不缩放，避免高光层错位） */
+    private fun startOnlinePulse() {
+        onlinePulseAnimator?.cancel()
+        onlinePulseAnimator = ValueAnimator.ofFloat(0.45f, 1f).apply {
+            duration = 1000L
+            repeatMode = ValueAnimator.REVERSE
+            repeatCount = ValueAnimator.INFINITE
+            addUpdateListener { anim ->
+                if (_binding == null) return@addUpdateListener
+                binding.dotStatus.alpha = anim.animatedValue as Float
+            }
+            start()
+        }
+    }
+
+    private fun stopOnlinePulse() {
+        onlinePulseAnimator?.cancel()
+        onlinePulseAnimator = null
+        if (_binding != null) binding.dotStatus.alpha = 1f
     }
 
     /** 连接状态 → 球面渐变 drawable（球面渐变灯取代文字，仅凭颜色/形状表达状态） */
@@ -642,6 +668,7 @@ class OverviewFragment : Fragment(), SnapshotFragment {
         cancelSwipeRefresh()
         // 取消呼吸动画，避免视图销毁后 addUpdateListener 访问 binding 触发 NPE/泄漏
         stopRePairBreath()
+        stopOnlinePulse()
         _binding = null
     }
 }
