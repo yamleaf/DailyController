@@ -5,7 +5,6 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.os.PowerManager
 import android.view.animation.LinearInterpolator
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.ColorUtils
@@ -16,17 +15,16 @@ import com.yample.daily.controller.R
  * 任务列表链式时间轴装饰：节点间上下连线 + 流动脉冲光点。
  *
  * - 连线：从上一个节点的中心画到下一个节点中心，统一描边灰；
- * - 流动脉冲：2 个及以上节点时，亮色光点沿连线从首个节点依次流向下一个，循环往复；
- * - 省电：仅屏幕交互中（isInteractive）才运行动画，息屏自动暂停、亮屏自动恢复。
+ * - 流动脉冲：2 个及以上节点时，亮色光点沿连线从首个节点依次流向下一个，循环往复，带渐隐彗尾；
+ * - 驱动：ValueAnimator 每帧用 [RecyclerView.postInvalidateOnAnimation] 触发「仅重绘」。
+ *   不能用 invalidateItemDecorations()——它在 RecyclerView 1.4.0 内部调 requestLayout()，
+ *   在本列表位于 NestedScrollView + wrap_content 的场景下会每帧重测所有 item，造成布局风暴、动画卡死。
+ * - 省电：依赖 Choreographer vsync 自然暂停（息屏/切后台时 vsync 停 → 回调停 → 动画自动停），无需显式轮询。
  *   节点中心 x = 12dp(paddingStart) + 40dp/2 = 32dp；中心 y = 行垂直中心。
  * */
 class TaskChainDecoration(context: Context) : RecyclerView.ItemDecoration() {
 
-    private val appContext = context.applicationContext
     private val density = context.resources.displayMetrics.density
-
-    /** 缓存 PowerManager，避免每帧 getSystemService 开销导致掉帧 */
-    private val powerManager = appContext.getSystemService(Context.POWER_SERVICE) as? PowerManager
 
     private val pulseColor = ContextCompat.getColor(context, R.color.md_primary)
 
@@ -65,24 +63,14 @@ class TaskChainDecoration(context: Context) : RecyclerView.ItemDecoration() {
         repeatCount = ValueAnimator.INFINITE
         interpolator = LinearInterpolator()
         addUpdateListener { anim ->
-            if (!isScreenOn()) {
-                anim.cancel()
-                return@addUpdateListener
-            }
             flowProgress = anim.animatedValue as Float
-            host?.invalidateItemDecorations()
+            host?.postInvalidateOnAnimation()
         }
-    }
-
-    private fun isScreenOn(): Boolean {
-        return powerManager?.isInteractive ?: true
     }
 
     override fun onDraw(canvas: Canvas, parent: RecyclerView, state: RecyclerView.State) {
         if (host !== parent) host = parent
-
-        val screenOn = isScreenOn()
-        if (screenOn && !flowAnimator.isStarted) {
+        if (!flowAnimator.isStarted) {
             flowAnimator.start()
         }
 
@@ -104,9 +92,7 @@ class TaskChainDecoration(context: Context) : RecyclerView.ItemDecoration() {
             canvas.drawLine(x, startY, x, endY, linePaint)
         }
 
-        if (screenOn) {
-            drawFlowPulse(canvas, parent)
-        }
+        drawFlowPulse(canvas, parent)
     }
 
     private fun drawFlowPulse(canvas: Canvas, parent: RecyclerView) {
