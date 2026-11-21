@@ -42,6 +42,8 @@ class ShizukuSettingsFragment : Fragment(), SnapshotFragment {
         binding.btnVerifyLogin.setOnClickListener { if (editable()) sendAction(Protocol.ACTION_VERIFY_LOGIN) }
         binding.btnScreenshot.setOnClickListener { if (editable()) sendAction(Protocol.ACTION_SCREENSHOT) }
         binding.btnCustom1.setOnClickListener { if (editable()) sendAction(Protocol.ACTION_CUSTOM_1) }
+        // 激活 Shizuku：与操作区可用性不同——它正是「已掉线/未授权」时才需要，故只要求已绑定（commandsEnabled），不要求已授权
+        binding.btnActivateShizuku.setOnClickListener { activateShizuku() }
         snapshot?.let { render(it) }
     }
 
@@ -60,6 +62,14 @@ class ShizukuSettingsFragment : Fragment(), SnapshotFragment {
         commandsEnabled = enabled
         val s = snapshot ?: return
         if (_binding != null) render(s)
+    }
+
+    /** 激活 Shizuku：下发 FIELD_SHIZUKU_START，让被控端发广播拉起 Shizuku manager（不要求已授权） */
+    private fun activateShizuku() {
+        if (!commandsEnabled) return
+        val act = activity as? DeviceControlActivity ?: return
+        act.sendShizukuStart()
+        Toast.makeText(requireContext(), "已下发「激活 Shizuku」指令", Toast.LENGTH_SHORT).show()
     }
 
     /** 服务可用 + 已授权 且 未解绑 → 操作/配置可用（授权即开启，无独立开关） */
@@ -111,6 +121,9 @@ class ShizukuSettingsFragment : Fragment(), SnapshotFragment {
         binding.btnVerifyLogin.alpha = alpha
         binding.btnScreenshot.alpha = alpha
         binding.btnCustom1.alpha = alpha
+        // 激活按钮：只受绑定状态影响（掉线/未授权正是它的使用场景，不随 sz_granted 置灰）
+        binding.btnActivateShizuku.isEnabled = commandsEnabled
+        binding.btnActivateShizuku.alpha = if (commandsEnabled) 1f else 0.45f
     }
 
     private fun sendAction(action: String) {

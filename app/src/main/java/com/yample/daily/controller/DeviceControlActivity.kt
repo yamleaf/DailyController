@@ -59,6 +59,9 @@ import java.util.UUID
 
 class DeviceControlActivity : AppCompatActivity() {
     lateinit var binding: ActivityDeviceControlBinding
+    // device 在 onCreate 主线程首次赋值，后续 MQTT 回调线程读 sessionSecret / pairingToken 等字段。
+    // 与 currentSnapshot 同理，需 volatile 保证跨线程可见性（否则解绑/换绑后读到旧 secret 有校验隐患）。
+    @Volatile
     lateinit var device: DeviceRecord
         private set
     private lateinit var db: AppDatabase
@@ -215,6 +218,9 @@ binding = ActivityDeviceControlBinding.inflate(layoutInflater)
         db = Room.databaseBuilder(this, AppDatabase::class.java, "daily-db")
             .addMigrations(AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6)
             .fallbackToDestructiveMigration(dropAllTables = true).build()
+        // 主线程同步读单行 Room 记录：后续 onCreate 大量逻辑（initMqtt/switchTab/各 tab 绑定）
+        // 强依赖 device 已在首次绘制前就绪，改成异步会牵动整段初始化，收益不成比例；
+        // 单行 fetchById 通常 <10ms，冷启动瞬时阻塞可接受（已评估，非无意阻塞）。
         val loaded = runBlocking(Dispatchers.IO) { db.deviceDao().getById(deviceId) }
         if (loaded == null) {
             Toast.makeText(this, "设备记录不存在", Toast.LENGTH_SHORT).show(); finish(); return
@@ -277,13 +283,13 @@ binding = ActivityDeviceControlBinding.inflate(layoutInflater)
                 // 已解绑/从未配对：不建立 MQTT 连接（不打扰被控端），保留缓存数据展示。
                 // 仅「重新配对」可点（其余控件由 onResume 对 !device.bound 统一禁用）；
                 // 扫码/剪贴板导入（applyRePair）获得令牌后才 initMqtt 开始重新配对。
-                setConnStatus("未配对，请重新扫码", false)
+                setConnStatus(ConnState.NEED_SCAN)
             } else {
-                setConnStatus("连接中…", false)
+                setConnStatus(ConnState.CONNECTING)
                 initMqtt()
             }
         } else {
-            setConnStatus("MQTT 已关闭", false)
+            setConnStatus(ConnState.MQTT_CLOSED)
             overviewFragment.setSnapshotHint(SnapshotHint.DISABLED)
         }
     }
@@ -524,7 +530,7 @@ private fun setupControllerNav() {
                 MqttQuota.onConnect(this@DeviceControlActivity)
                 // broker 连接成功 ≠ 被控端在线：先中性「连接中」(灰)，避免误亮绿灯；
                 // 真实在线态由后续「探活中→快照确认」或配对分支决定。
-                runOnUiThread { setConnStatus("连接中…", false) }
+                runOnUiThread { setConnStatus(ConnState.CONNECTING) }
                 // 重连成功时复位离线标记：若此前首次探活判定离线，本次重连会重新走首次探活逻辑。
                 recentlyMarkedOffline = false
                 if (device.sessionSecret.isBlank()) {
@@ -566,7 +572,7 @@ private fun setupControllerNav() {
 
             override fun connectionLost(cause: Throwable?) {
                 MqttQuota.onDisconnect(this@DeviceControlActivity)
-                runOnUiThread { setConnStatus("连接断开", false) }
+                runOnUiThread { setConnStatus(ConnState.DISCONNECTED) }
             }
 
             override fun messageArrived(topic: String?, message: MqttMessage?) {
@@ -604,7 +610,7 @@ private fun setupControllerNav() {
                         // 已解绑/从未扫码：不发起配对打扰被控端，仅订阅读状态，提示用户重新扫码
                         subscribeTopics()
                         runOnUiThread {
-                            setConnStatus("未配对，请重新扫码", false)
+                            setConnStatus(ConnState.NEED_SCAN)
                         }
                     }
                 } else {
@@ -616,7 +622,7 @@ private fun setupControllerNav() {
             } catch (e: MqttException) {
                 e.printStackTrace()
                 runOnUiThread {
-                    setConnStatus("连接失败", false)
+                    setConnStatus(ConnState.FAILED)
                     val reason = when (e.reasonCode) {
                         MqttException.REASON_CODE_FAILED_AUTHENTICATION.toInt(),
                         MqttException.REASON_CODE_NOT_AUTHORIZED.toInt() ->
@@ -690,7 +696,7 @@ private fun setupControllerNav() {
         }
         if (anyDenied) {
             runOnUiThread {
-                setConnStatus("已连接（订阅被拒）", true)
+                setConnStatus(ConnState.SUB_DENIED)
                 val msg = if (pushDenied) {
                     "增量推送主题 ${MqttPacket.TOPIC_PREFIX}/${device.deviceId}/push 被 broker 拒绝（EMQX ACL 未授权）。不会回退轮询；改设置成功后仍会拉一次快照。请给账户 ${device.ctlUser} 增加该主题的订阅权限以恢复增量推送。"
                 } else {
@@ -711,7 +717,7 @@ private fun setupControllerNav() {
             if (mqttClient?.isConnected == true) return
             // 如果之前有未彻底关闭的客户端，先清理，避免双连接或自动重连仍在跑
             disconnectMqtt()
-            setConnStatus("连接中…", false)
+            setConnStatus(ConnState.CONNECTING)
             currentSnapshot = null
             overviewFragment.setSnapshotHint(SnapshotHint.WAITING)
             initMqtt()
@@ -737,7 +743,7 @@ private fun setupControllerNav() {
         try { client.setCallback(null) } catch (_: Exception) { }
         try { client.disconnectForcibly(0, 0, false) } catch (_: Exception) { }
         try { client.close(true) } catch (_: Exception) { }
-        runOnUiThread { setConnStatus("MQTT 已关闭", false) }
+        runOnUiThread { setConnStatus(ConnState.MQTT_CLOSED) }
     }
 
     /** 累加 MQTT 消息计数并刷新额度 UI */
@@ -780,11 +786,11 @@ private fun setupControllerNav() {
             mqttClient?.publish("${MqttPacket.TOPIC_PREFIX}/${device.deviceId}/pair",
                 MqttMessage(gson.toJson(packet).toByteArray()).apply { qos = 1 })
             bumpQuota(1, 0)
-            runOnUiThread { setConnStatus("已连接（配对中…）", true) }
+            runOnUiThread { setConnStatus(ConnState.CONNECTED_PAIRING) }
             mainHandler.postDelayed(PAIR_TIMEOUT_RUNNABLE, PAIR_TIMEOUT_MS)
         } catch (e: MqttException) {
             e.printStackTrace()
-            runOnUiThread { setConnStatus("已连接（配对发送失败）", true) }
+            runOnUiThread { setConnStatus(ConnState.PAIR_SEND_FAILED) }
         }
     }
 
@@ -792,11 +798,11 @@ private fun setupControllerNav() {
         if (device.sessionSecret.isNotBlank()) return
         if (pairRetries < PAIR_MAX_RETRIES) {
             pairRetries++
-            runOnUiThread { setConnStatus("已连接（配对重试 $pairRetries/$PAIR_MAX_RETRIES）", true) }
+            runOnUiThread { setConnStatus(ConnState.PAIR_RETRYING) }
             lifecycleScope.launch { publishPair() }
         } else {
             runOnUiThread {
-                setConnStatus("已连接（未配对）", true)
+                setConnStatus(ConnState.CONNECTED_UNPAIRED)
                 Toast.makeText(this, "配对失败：被控端未确认。请确认被控端已点「生成绑定二维码」，再重新扫码", Toast.LENGTH_LONG).show()
             }
         }
@@ -855,7 +861,7 @@ private fun setupControllerNav() {
                 sendOfflineBroadcast(device.name, device.deviceId, System.currentTimeMillis())
             }
             deviceWasOnline = false
-            runOnUiThread { setConnStatus("设备离线", false) }
+            runOnUiThread { setConnStatus(ConnState.OFFLINE) }
             return
         }
         // state == "online"：
@@ -867,7 +873,7 @@ private fun setupControllerNav() {
         }
         // 非 retained 的在线消息：被控端刚刚主动发布 online，确证在线 → 点亮绿灯
         deviceWasOnline = true
-        runOnUiThread { setConnStatus(text, true) }
+        runOnUiThread { setConnStatus(ConnState.ONLINE) }
     }
 
     /**
@@ -986,8 +992,7 @@ private fun setupControllerNav() {
         overviewFragment.setRemoteEnabled(false)
         // 状态文案 + 解绑横幅（区别于普通离线提示）
         setConnStatus(
-            if (force) "已被强制解绑" else "已解绑",
-            false,
+            ConnState.UNBOUND,
             if (force) "设备已被强制解绑，请重新配对绑定" else "设备已解绑，请重新配对绑定"
         )
         overviewFragment.setStaleBanner(true)
@@ -1023,7 +1028,7 @@ private fun setupControllerNav() {
         ) {
             Log.w(TAG, "PA 验签失败，忽略伪造配对确认")
             runOnUiThread {
-                setConnStatus("已连接（未配对）", true)
+                setConnStatus(ConnState.CONNECTED_UNPAIRED)
                 Toast.makeText(this, "配对确认验签失败，请重新扫码", Toast.LENGTH_LONG).show()
             }
             return
@@ -1048,7 +1053,7 @@ private fun setupControllerNav() {
             overviewFragment.setRemoteEnabled(true)
             // 恢复所有远程操作控件（解绑时被禁用的刷新 / MQTT 开关 / 快捷动作 / 任务设置页 / 重配对入口隐藏）
             applyBoundUiState()
-            setConnStatus("已连接（已配对）", true)
+            setConnStatus(ConnState.ONLINE)
             Toast.makeText(this, "已与控制端完成配对", Toast.LENGTH_SHORT).show()
         }
         // 配对刚完成即视为「首次在线」：发起一次探活 + 快照拉取（含重试与离线判定）
@@ -1110,13 +1115,13 @@ private fun setupControllerNav() {
                     "NO_PAIRING" -> {
                         // 被控端尚未生成配对码：停止重试循环，避免一直卡在“配对中”
                         mainHandler.removeCallbacks(PAIR_TIMEOUT_RUNNABLE)
-                        setConnStatus("已连接（未配对）", true)
+                        setConnStatus(ConnState.CONNECTED_UNPAIRED)
                         Toast.makeText(this, "被控端：尚未生成配对码。请在被控端「远程控制」页点「生成绑定二维码」，再重新扫码", Toast.LENGTH_LONG).show()
                     }
                     "TOKEN_MISMATCH" -> {
                         // 配对码不一致/已过期：停止重试，提示重新生成二维码
                         mainHandler.removeCallbacks(PAIR_TIMEOUT_RUNNABLE)
-                        setConnStatus("已连接（未配对）", true)
+                        setConnStatus(ConnState.CONNECTED_UNPAIRED)
                         Toast.makeText(this, "被控端：配对码不一致或已过期。请重新生成二维码后重新扫码", Toast.LENGTH_LONG).show()
                     }
                     "UNBOUND" -> Toast.makeText(this, "被控端：当前未绑定，请先用二维码完成配对", Toast.LENGTH_SHORT).show()
@@ -1222,6 +1227,8 @@ private fun setupControllerNav() {
         "SERVICE_UNAVAILABLE" -> "服务未就绪"
         "UNKNOWN_ACTION" -> "未知动作"
         "DUP_OR_STALE" -> "请求过期或重复"
+        "START_SENT" -> "已下发启动指令，Shizuku 拉起中"
+        "START_FAIL" -> "激活失败：Shizuku 未安装"
         else -> "回执：$result"
     }
 
@@ -1369,13 +1376,13 @@ private fun setupControllerNav() {
                                 text = time
                                 textSize = 13f
                                 gravity = android.view.Gravity.START
-                                setTextColor(0xFF3A3A3A.toInt())
+                                setTextColor(ContextCompat.getColor(this@DeviceControlActivity, R.color.md_onSurface))
                             })
                             addView(android.widget.TextView(this@DeviceControlActivity).apply {
                                 text = status
                                 textSize = 13f
                                 gravity = android.view.Gravity.END
-                                setTextColor(0xFF3A3A3A.toInt())
+                                setTextColor(ContextCompat.getColor(this@DeviceControlActivity, R.color.md_onSurface))
                             })
                         }
                         attendanceWaitContainer?.addView(row)
@@ -1387,7 +1394,7 @@ private fun setupControllerNav() {
                     gravity = android.view.Gravity.CENTER
                     text = "今日暂无考勤记录"
                     textSize = 13f
-                    setTextColor(0xFF3A3A3A.toInt())
+                    setTextColor(ContextCompat.getColor(this@DeviceControlActivity, R.color.md_onSurface))
                 })
             }
             attendanceWaitDialog?.setTitle("考勤记录（今日）")
@@ -1442,7 +1449,7 @@ private fun setupControllerNav() {
                 overviewFragment.setProbing(false)
                 if (rtt >= 0) deviceFragment.setConnQuality(rtt)
                 // 探活/快照拉取成功 = 被控端确实在线 → 点亮绿灯（不再依赖 broker 连接态）
-                setConnStatus("在线（已配对）", true)
+                setConnStatus(ConnState.ONLINE)
                 refreshCurrentFragment()
             }
         } catch (e: Exception) {
@@ -1537,7 +1544,7 @@ private fun setupControllerNav() {
                 overviewFragment.setSnapshotHint(SnapshotHint.NONE)
                 overviewFragment.setProbing(false)
                 // 被控端主动推送增量 = 确证在线 → 点亮绿灯
-                setConnStatus("在线（已配对）", true)
+                setConnStatus(ConnState.ONLINE)
                 refreshCurrentFragment()
             }
         } catch (e: Exception) {
@@ -1795,6 +1802,7 @@ val calendar = CalendarSnapshot(
         }
         lastCommandLabel = when (field) {
             Protocol.FIELD_UPDATE_HOLIDAY -> "更新节假日"
+            Protocol.FIELD_SHIZUKU_START -> "激活 Shizuku"
             else -> "修改设置"
         }
         val ts = System.currentTimeMillis()
@@ -1898,6 +1906,10 @@ val calendar = CalendarSnapshot(
     /** 下发 Shizuku 镜像配置（不含密码明文；密码仅被控端本地设置） */
     fun sendShizukuConfig(json: String) =
         sendUpdate(Protocol.FIELD_SHIZUKU_CONFIG, PacketValue.StringValue(json))
+
+    /** 下发「激活 Shizuku」（FIELD_SHIZUKU_START）：让被控端发广播拉起 Shizuku manager 启动 server */
+    fun sendShizukuStart() =
+        sendUpdate(Protocol.FIELD_SHIZUKU_START, PacketValue.BooleanValue(true))
 
     /** 从快照缓存提取 Shizuku 镜像摘要（sz_* 设置项），供镜像页展示 */
     fun shizukuMirrorSummary(): Map<String, String> {
@@ -2320,7 +2332,7 @@ val calendar = CalendarSnapshot(
                     gravity = android.view.Gravity.CENTER
                     text = "等待超时，未收到被控端打卡结果"
                     textSize = 14f
-                    setTextColor(0xFFB45309.toInt())
+                    setTextColor(ContextCompat.getColor(this@DeviceControlActivity, R.color.md_warning))
                 })
                 return
             }
@@ -2397,10 +2409,10 @@ val calendar = CalendarSnapshot(
         val firstLine = lines.getOrNull(0).orEmpty()
         val hint = lines.getOrNull(1).orEmpty()
         val dp = { v: Float -> (v * resources.displayMetrics.density + 0.5f).toInt() }
-        // 跳过/超时：琥珀色；成功：绿色。跳过不得走成功绿，避免「看起来像打卡成功」
+        // 跳过/超时：琥珀色（md_warning）；成功：绿色（md_tertiary）。跳过不得走成功绿，避免「看起来像打卡成功」
         val statusColor = when {
-            isSkip || isTimeout -> 0xFFB45309.toInt()
-            else -> 0xFF1B7A43.toInt()
+            isSkip || isTimeout -> ContextCompat.getColor(this, R.color.md_warning)
+            else -> ContextCompat.getColor(this, R.color.md_tertiary)
         }
         punchWaitContainer?.removeAllViews()
         // 第一行：时间(左, weight1) + 状态(右)，中间留白；约定 msg 形如「HH:mm:ss 状态…」
@@ -2433,7 +2445,7 @@ val calendar = CalendarSnapshot(
                 text = hint
                 textSize = 12f
                 setPadding(0, dp(8f), 0, 0)
-                setTextColor(0xFF9E9E9E.toInt())
+                setTextColor(ContextCompat.getColor(this@DeviceControlActivity, R.color.md_onSurfaceVariant))
             })
         }
         punchWaitDialog?.setTitle(if (isSkip) "任务已跳过" else "打卡结果")
@@ -2483,7 +2495,7 @@ val calendar = CalendarSnapshot(
                 gravity = android.view.Gravity.CENTER
                 text = "等待超时，未收到考勤数据"
                 textSize = 14f
-                setTextColor(0xFFB45309.toInt())
+                setTextColor(ContextCompat.getColor(this@DeviceControlActivity, R.color.md_warning))
             })
         }
         mainHandler.postDelayed(attendanceTimeoutRunnable!!, 15_000L)
@@ -2504,7 +2516,7 @@ val calendar = CalendarSnapshot(
             firstEntryProbeActive = false // 走常规查询重试，不触发「探活两次失败离线判定」
             Log.d(TAG, "首次进入：HB 新鲜，直接判在线（deviceId=${device.deviceId}），快照拉取中")
             runOnUiThread {
-                setConnStatus("在线（HB）", true)
+                setConnStatus(ConnState.ONLINE)
                 overviewFragment.setProbing(false)
             }
         } else {
@@ -2514,7 +2526,7 @@ val calendar = CalendarSnapshot(
             // 只有本次真正发出探活才置「探活中」(琥珀)。connectComplete 与 connect() 返回分支
             // 都会调到这，若在上层无条件置琥珀，后到者会把已确认成功的绿灯覆盖成黄、且此处因
             // firstEntryProbeStarted=true 直接 return 不再发探活 → 色灯卡黄。集中在探活真正发起点设置。
-            runOnUiThread { setConnStatus("探活中…", false) }
+            runOnUiThread { setConnStatus(ConnState.PROBING) }
             runOnUiThread { overviewFragment.setProbing(true) }
         }
         // 首次进入探活是「必须真正发出」的查询，豁免节流（force）
@@ -2548,7 +2560,7 @@ val calendar = CalendarSnapshot(
         }
         runOnUiThread {
             setConnStatus(
-                "设备离线（无响应）", false,
+                ConnState.OFFLINE,
                 "被控端未响应，可能已经离线/解绑。\n可尝试给被控端发送通知指令（如「DT#状态查询」）"
             )
             overviewFragment.setActionsEnabled(false)
@@ -2568,7 +2580,7 @@ val calendar = CalendarSnapshot(
         if (!recentlyMarkedOffline) return
         recentlyMarkedOffline = false
         runOnUiThread {
-            setConnStatus("已连接（已配对）", true)
+            setConnStatus(ConnState.ONLINE)
             overviewFragment.setActionsEnabled(true)
             overviewFragment.setStaleBanner(false)
             toastOnce("recover_offline", "被控端恢复响应")
@@ -2640,21 +2652,21 @@ val calendar = CalendarSnapshot(
     }
 
     // ===================== 连接状态 =====================
-    fun setConnStatus(text: String, online: Boolean) {
-        setConnStatus(text, online, null)
+    fun setConnStatus(state: ConnState) {
+        setConnStatus(state, null)
     }
 
-    fun setConnStatus(text: String, online: Boolean, bannerText: String?) {
-        overviewFragment.setConnStatusText(text, online)
+    fun setConnStatus(state: ConnState, bannerText: String?) {
+        overviewFragment.setConnStatusText(state)
         // B4：离线横幅（连接中/探活中过渡态不显示）+ 断连禁用控制按钮
-        val showBanner = remoteEnabled && !online && !text.contains("连接中") && !text.contains("探活中")
+        val showBanner = remoteEnabled && !state.online && !state.transition
         binding.offlineBanner.visibility = if (showBanner) View.VISIBLE else View.GONE
         if (bannerText != null) {
             binding.tvOfflineBanner.text = bannerText
         } else if (showBanner) {
             binding.tvOfflineBanner.text = "设备离线，数据可能不是最新"
         }
-        overviewFragment.setActionsEnabled(online)
+        overviewFragment.setActionsEnabled(state.online)
     }
 
     /** D2：动作回执 Snackbar（替代 Toast，置于页面底部更醒目） */
@@ -2682,7 +2694,7 @@ val calendar = CalendarSnapshot(
         if (mqttClient?.isConnected == true) {
             lifecycleScope.launch { publishPair() }
         } else {
-            setConnStatus("连接中…", false)
+            setConnStatus(ConnState.CONNECTING)
             initMqtt()
         }
     }
@@ -2767,7 +2779,7 @@ val calendar = CalendarSnapshot(
                 remoteEnabled = true
                 prefs.edit().putBoolean("remote_enabled_${device.deviceId}", true).apply()
                 Toast.makeText(this@DeviceControlActivity, "已更新配对信息，正在重新配对…", Toast.LENGTH_SHORT).show()
-                setConnStatus("连接中…", false)
+                setConnStatus(ConnState.CONNECTING)
                 disconnectMqtt()
                 initMqtt()
             }
@@ -2777,7 +2789,7 @@ val calendar = CalendarSnapshot(
     /** D6：连接失败时点击状态文案重试 —— 断开旧连接后重连 */
     fun retryConnection() {
         disconnectMqtt()
-        setConnStatus("连接中…", false)
+        setConnStatus(ConnState.CONNECTING)
         initMqtt()
     }
 
@@ -2792,10 +2804,10 @@ val calendar = CalendarSnapshot(
         if (saved != remoteEnabled) {
             remoteEnabled = saved
             if (saved && mqttClient == null && device.bound) {
-                setConnStatus("连接中…", false)
+                setConnStatus(ConnState.CONNECTING)
                 initMqtt()
             } else if (!saved) {
-                setConnStatus("MQTT 已关闭", false)
+                setConnStatus(ConnState.MQTT_CLOSED)
                 overviewFragment.setSnapshotHint(SnapshotHint.DISABLED)
             }
         }
@@ -2803,8 +2815,7 @@ val calendar = CalendarSnapshot(
         if (!device.bound) {
             applyUnboundUiState()
             setConnStatus(
-                if (forceUnbound) "已被强制解绑" else "已解绑",
-                false,
+                ConnState.UNBOUND,
                 if (forceUnbound) "设备已被强制解绑，请重新配对绑定" else "设备已解绑，请重新配对绑定"
             )
         } else {
@@ -2829,7 +2840,7 @@ val calendar = CalendarSnapshot(
         // B2：从后台回到前台时，若远程开关开启且当前没有活跃连接，则重连并恢复刷新
         // 解绑后 device.bound=false，不自动重连，需用户主动点「重新配对」
         if (remoteEnabled && mqttClient == null && device.bound) {
-            setConnStatus("连接中…", false)
+            setConnStatus(ConnState.CONNECTING)
             initMqtt()
         }
     }
