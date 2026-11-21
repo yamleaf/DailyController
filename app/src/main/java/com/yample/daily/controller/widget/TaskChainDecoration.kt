@@ -25,6 +25,11 @@ class TaskChainDecoration(context: Context) : RecyclerView.ItemDecoration() {
     private val appContext = context.applicationContext
     private val density = context.resources.displayMetrics.density
 
+    /** 缓存 PowerManager，避免每帧 getSystemService 开销导致掉帧 */
+    private val powerManager = appContext.getSystemService(Context.POWER_SERVICE) as? PowerManager
+
+    private val pulseColor = ContextCompat.getColor(context, R.color.md_primary)
+
     /** 轨道列中心 x（12dp paddingStart + 40dp 轨道半宽） */
     private val trackCenterX = 32f * density
 
@@ -35,17 +40,20 @@ class TaskChainDecoration(context: Context) : RecyclerView.ItemDecoration() {
         color = ContextCompat.getColor(context, R.color.md_outlineVariant)
     }
 
-    // 流动脉冲光点：白色高光核心 + 主题蓝半透明光晕
+    // 流动脉冲：白色高光核心 + 主题蓝半透明光晕 + 渐隐彗尾
     private val flowGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
-        color = ColorUtils.setAlphaComponent(
-            ContextCompat.getColor(context, R.color.md_primary), 0x40
-        )
+        color = ColorUtils.setAlphaComponent(pulseColor, 0x40)
     }
 
     private val flowCorePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
         color = Color.WHITE
+    }
+
+    private val trailPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = pulseColor
     }
 
     private var host: RecyclerView? = null
@@ -67,8 +75,7 @@ class TaskChainDecoration(context: Context) : RecyclerView.ItemDecoration() {
     }
 
     private fun isScreenOn(): Boolean {
-        val pm = appContext.getSystemService(Context.POWER_SERVICE) as? PowerManager
-        return pm?.isInteractive ?: true
+        return powerManager?.isInteractive ?: true
     }
 
     override fun onDraw(canvas: Canvas, parent: RecyclerView, state: RecyclerView.State) {
@@ -138,6 +145,22 @@ class TaskChainDecoration(context: Context) : RecyclerView.ItemDecoration() {
         }
 
         val x = parent.getChildAt(0).left + trackCenterX
+
+        // 渐隐彗尾：光点运动反方向（上方）画一串透明度/半径递减的圆点，形成「流水」拖尾
+        val trailSteps = 14
+        val trailLen = 44f * density
+        val firstY = segments[0][0]
+        for (s in 1..trailSteps) {
+            val frac = s.toFloat() / trailSteps
+            val back = trailLen * frac
+            val y = pulseY - back
+            if (y < firstY - 4f * density) break
+            val alpha = (1f - frac).let { it * it * 0.5f }
+            trailPaint.alpha = (alpha * 255).toInt().coerceIn(0, 255)
+            val r = 1.8f * density * (1f - frac * 0.5f)
+            canvas.drawCircle(x, y, r, trailPaint)
+        }
+        // 光点：光晕 + 白色核心
         canvas.drawCircle(x, pulseY, 5f * density, flowGlowPaint)
         canvas.drawCircle(x, pulseY, 2f * density, flowCorePaint)
     }
