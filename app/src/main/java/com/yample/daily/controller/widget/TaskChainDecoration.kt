@@ -65,18 +65,27 @@ class TaskChainDecoration(context: Context) : RecyclerView.ItemDecoration() {
         color = pulseColor
     }
 
-    /** 节点点亮联动：光点靠近节点时，在节点位置画一圈增亮光晕（alpha 由距离动态控制） */
-    private val nodeGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.FILL
+    /** 节点点亮联动：画在 onDrawOver（item 之上），光点靠近节点时套一圈亮环 + 中心高光 */
+    private val nodeRingPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 1.6f * density
         color = pulseColor
+    }
+
+    private val nodeCorePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = Color.WHITE
     }
 
     private var host: RecyclerView? = null
 
     private var flowProgress = 0f
 
+    /** 当前光点 y 坐标，供 onDrawOver 判断哪些节点被「经过」 */
+    private var pulseY = Float.MIN_VALUE
+
     private val flowAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-        duration = 1800
+        duration = 3600
         repeatCount = ValueAnimator.INFINITE
         interpolator = LinearInterpolator()
         addUpdateListener { anim ->
@@ -136,7 +145,7 @@ class TaskChainDecoration(context: Context) : RecyclerView.ItemDecoration() {
 
         val target = flowProgress * totalLen
         var acc = 0f
-        var pulseY = segments[0][0]
+        pulseY = segments[0][0]
         for (seg in segments) {
             val segLen = seg[1] - seg[0]
             if (target <= acc + segLen) {
@@ -168,20 +177,28 @@ class TaskChainDecoration(context: Context) : RecyclerView.ItemDecoration() {
         canvas.drawCircle(x, pulseY, 3f * density, glowMidPaint)
         canvas.drawCircle(x, pulseY, 2f * density, glowInnerPaint)
         canvas.drawCircle(x, pulseY, 1.3f * density, flowCorePaint)
+    }
 
-        // 节点点亮联动：光点经过节点时，节点短暂增亮（光晕随距离衰减）
-        val nodeGlowRange = 26f * density
-        for (i in 0 until count) {
+    /**
+     * 节点点亮画在 item 之上（onDraw 在子 view 之前绘制，光环会被 34dp 的节点圆底盖住）。
+     * */
+    override fun onDrawOver(canvas: Canvas, parent: RecyclerView, state: RecyclerView.State) {
+        if (pulseY == Float.MIN_VALUE || parent.childCount == 0) return
+
+        val x = parent.getChildAt(0).left + trackCenterX
+        val glowRange = 46f * density
+        for (i in 0 until parent.childCount) {
             val child = parent.getChildAt(i)
             val nodeY = child.top + child.height / 2f
             val dist = kotlin.math.abs(nodeY - pulseY)
-            if (dist < nodeGlowRange) {
-                val intensity = 1f - dist / nodeGlowRange
-                val alpha = (intensity * intensity * 0x66).toInt()
-                nodeGlowPaint.alpha = alpha.coerceIn(0, 255)
-                val r = 2.2f * density * (1f + 0.6f * intensity)
-                canvas.drawCircle(x, nodeY, r, nodeGlowPaint)
-            }
+            if (dist >= glowRange) continue
+
+            val intensity = 1f - dist / glowRange
+            // 亮环套在 34dp 节点（半径 17dp）外侧，中心补一点白高光
+            nodeRingPaint.alpha = (intensity * 0xB0).toInt().coerceIn(0, 255)
+            canvas.drawCircle(x, nodeY, (19f + 3f * intensity) * density, nodeRingPaint)
+            nodeCorePaint.alpha = (intensity * 0xD0).toInt().coerceIn(0, 255)
+            canvas.drawCircle(x, nodeY, (2f + 1.4f * intensity) * density, nodeCorePaint)
         }
     }
 }
