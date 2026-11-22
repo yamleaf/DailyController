@@ -1189,6 +1189,24 @@ private fun setupControllerNav() {
                         Toast.makeText(this, "被控端：请求已过期或重复（请检查两端时间是否一致）", Toast.LENGTH_LONG).show()
                         forceRefreshSnapshot()
                     }
+                    "START_SENT" -> {
+                        // 旧版被控端只回「广播已投递」：保留提示但不认为服务已起
+                        Toast.makeText(this, "Shizuku 启动广播已下发，等待服务就绪", Toast.LENGTH_LONG).show()
+                    }
+                    "START_OK" -> {
+                        Toast.makeText(this, "Shizuku 已激活（$detail）", Toast.LENGTH_LONG).show()
+                        forceRefreshSnapshot(800L)
+                    }
+                    "START_FAIL" -> {
+                        val reason = when (detail) {
+                            "NO_MANAGER" -> "未检测到 Shizuku manager"
+                            "BROADCAST" -> "启动广播投递失败"
+                            "TIMEOUT" -> "等待服务启动超时，请检查自启动权限/无线调试"
+                            else -> detail.ifBlank { "未知原因" }
+                        }
+                        Toast.makeText(this, "Shizuku 激活失败：$reason", Toast.LENGTH_LONG).show()
+                        forceRefreshSnapshot()
+                    }
                     // CMD_SYNC 的探活回执，无需打扰用户
                     "ONLINE" -> Unit
                     else -> Toast.makeText(this, "设备回执：$result", Toast.LENGTH_SHORT).show()
@@ -1228,7 +1246,16 @@ private fun setupControllerNav() {
         "UNKNOWN_ACTION" -> "未知动作"
         "DUP_OR_STALE" -> "请求过期或重复"
         "START_SENT" -> "已下发启动指令，Shizuku 拉起中"
-        "START_FAIL" -> "激活失败：Shizuku 未安装"
+        "START_OK" -> "Shizuku 已激活（${result.substringAfter(':', "").ifBlank { "OK" }}）"
+        "START_FAIL" -> {
+            val d = result.substringAfter(':', "")
+            "激活失败：${when (d) {
+                "NO_MANAGER" -> "未检测到 Shizuku manager"
+                "BROADCAST" -> "启动广播投递失败"
+                "TIMEOUT" -> "等待服务启动超时，请检查自启动权限/无线调试"
+                else -> d.ifBlank { "未知原因" }
+            }}"
+        }
         else -> "回执：$result"
     }
 

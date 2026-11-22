@@ -1,6 +1,7 @@
 package com.yample.daily.controller
 
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -28,6 +29,9 @@ class ShizukuSettingsFragment : Fragment(), SnapshotFragment {
 
     /** 解绑态禁用（由宿主统一控制；恢复后 render 还原） */
     private var commandsEnabled = true
+
+    /** 激活是长回执（DT 最长等待 30s），本地短节流防止连续点击下发多条指令 */
+    private var lastActivateAt = 0L
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentShizukuSettingsBinding.inflate(inflater, container, false)
@@ -70,9 +74,15 @@ class ShizukuSettingsFragment : Fragment(), SnapshotFragment {
         // 双保险：服务正常时不下发（按钮已灰，此处再拦一道防时序竞态）
         val serviceUnavailable = strOf("sz_status").ifBlank { "不可用" } == "不可用"
         if (!commandsEnabled || !serviceUnavailable) return
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastActivateAt < 12_000L) {
+            Toast.makeText(requireContext(), "激活指令已下发，请等待回执后再重试", Toast.LENGTH_SHORT).show()
+            return
+        }
+        lastActivateAt = now
         val act = activity as? DeviceControlActivity ?: return
         act.sendShizukuStart()
-        Toast.makeText(requireContext(), "已下发「激活 Shizuku」指令", Toast.LENGTH_SHORT).show()
+        Toast.makeText(requireContext(), "已下发「激活 Shizuku」指令，等待被控端确认服务启动…", Toast.LENGTH_SHORT).show()
     }
 
     /** 服务可用 + 已授权 且 未解绑 → 操作/配置可用（授权即开启，无独立开关） */
