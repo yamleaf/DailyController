@@ -5,7 +5,6 @@ import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import android.view.View
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
@@ -20,7 +19,6 @@ import com.journeyapps.barcodescanner.ScanOptions
 import com.yample.daily.controller.databinding.ActivityMainBinding
 import com.yample.mqttprotocol.BindingPayload
 import com.yample.mqttprotocol.BrokerUtils
-import com.yample.mqttprotocol.Hkdf
 import com.yample.mqttprotocol.MqttPacket
 import com.yample.mqttprotocol.MqttSigner
 import com.yample.mqttprotocol.PacketValue
@@ -195,11 +193,11 @@ class MainActivity : AppCompatActivity() {
     private fun importFromClipboard() {
         try {
             val cm = getSystemService(CLIPBOARD_SERVICE) as? ClipboardManager ?: run {
-                Toast.makeText(this, "剪贴板服务不可用", Toast.LENGTH_SHORT).show(); return
+                UiNotice.show(this@MainActivity, binding.root, "剪贴板服务不可用", false); return
             }
             val text = cm.primaryClip?.getItemAt(0)?.text?.toString()
             if (text.isNullOrBlank()) {
-                Toast.makeText(this, "剪贴板为空，请先在被控端「远程控制」页点「生成绑定二维码」（会自动复制到剪贴板）", Toast.LENGTH_LONG).show()
+                UiNotice.show(this@MainActivity, binding.root, "剪贴板为空，请先在被控端「远程控制」页点「生成绑定二维码」（会自动复制到剪贴板）", true)
                 return
             }
             // 完整文本含 ctlPass + pairingToken（可接管设备），不落日志；下方「解析成功」行已含 broker/deviceId 足供排障
@@ -210,15 +208,15 @@ class MainActivity : AppCompatActivity() {
                     addDevice(payload, navigate = true)
                 } else {
                     Log.w(TAG, "解析结果字段为空: payload=$payload broker=${payload?.broker} deviceId=${payload?.deviceId}")
-                    Toast.makeText(this, "剪贴板内容缺少必要字段（broker/deviceId）", Toast.LENGTH_SHORT).show()
+                    UiNotice.show(this@MainActivity, binding.root, "剪贴板内容缺少必要字段（broker/deviceId）", false)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "JSON解析失败: ${e.message}", e)
-                Toast.makeText(this, "剪贴板内容不是有效的配对信息", Toast.LENGTH_SHORT).show()
+                UiNotice.show(this@MainActivity, binding.root, "剪贴板内容不是有效的配对信息", false)
             }
         } catch (e: Exception) {
             Log.e(TAG, "读取剪贴板失败: ${e.message}", e)
-            Toast.makeText(this, "读取剪贴板失败：${e.message}", Toast.LENGTH_SHORT).show()
+            UiNotice.show(this@MainActivity, binding.root, "读取剪贴板失败：${e.message}", false)
         }
     }
 
@@ -237,11 +235,11 @@ class MainActivity : AppCompatActivity() {
                 addDevice(payload, navigate = true)
             } else {
                 Log.w(TAG, "分享内容缺少必要字段: payload=$payload")
-                Toast.makeText(this, "分享内容缺少必要字段（broker/deviceId）", Toast.LENGTH_SHORT).show()
+                UiNotice.show(this@MainActivity, binding.root, "分享内容缺少必要字段（broker/deviceId）", false)
             }
         } catch (e: Exception) {
             Log.e(TAG, "分享内容解析失败: ${e.message}", e)
-            Toast.makeText(this, "分享内容不是有效的配对信息", Toast.LENGTH_SHORT).show()
+            UiNotice.show(this@MainActivity, binding.root, "分享内容不是有效的配对信息", false)
         }
     }
 
@@ -253,10 +251,10 @@ class MainActivity : AppCompatActivity() {
             if (payload != null && payload.broker.isNotBlank() && payload.deviceId.isNotBlank()) {
                 addDevice(payload, navigate = true)
             } else {
-                Toast.makeText(this, "二维码缺少必要字段（broker/deviceId）", Toast.LENGTH_SHORT).show()
+                UiNotice.show(this@MainActivity, binding.root, "二维码缺少必要字段（broker/deviceId）", false)
             }
         } catch (e: Exception) {
-            Toast.makeText(this, "无效的二维码格式", Toast.LENGTH_SHORT).show()
+            UiNotice.show(this@MainActivity, binding.root, "无效的二维码格式", false)
         }
     }
 
@@ -798,11 +796,7 @@ class MainActivity : AppCompatActivity() {
         withContext(Dispatchers.Main) {
             onlineState.remove(device.deviceId)
             loadDevices()
-            Toast.makeText(
-                this@MainActivity,
-                "设备「${device.name}」已被解绑，请重新扫码配对",
-                Toast.LENGTH_LONG
-            ).show()
+            UiNotice.show(this@MainActivity, binding.root, "设备「${device.name}」已被解绑，请重新扫码配对", true)
         }
     }
 
@@ -880,7 +874,7 @@ class MainActivity : AppCompatActivity() {
                     intent.putExtra("deviceId", device.deviceId)
                     startActivity(intent)
                 } else {
-                    Toast.makeText(this@MainActivity, "设备已添加", Toast.LENGTH_SHORT).show()
+                    UiNotice.show(this@MainActivity, binding.root, "设备已添加", false)
                 }
             }
         }
@@ -1070,7 +1064,7 @@ class MainActivity : AppCompatActivity() {
                 OnlineStateCache.remove(device.deviceId)
                 withContext(Dispatchers.Main) {
                     loadDevices()
-                    Toast.makeText(this@MainActivity, "已删除设备并通知被控端解绑", Toast.LENGTH_SHORT).show()
+                    UiNotice.show(this@MainActivity, binding.root, "已删除设备并通知被控端解绑", false)
                 }
             }
         }

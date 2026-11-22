@@ -82,32 +82,30 @@
         android:textSize="13sp"
         android:textStyle="bold" />
 
-    <TextView
+    <com.google.android.material.button.MaterialButton
         android:id="@+id/btnEditTask"
+        style="@style/Widget.Material3.Button.TextButton"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginStart="10dp"
-        android:gravity="center"
-        android:minHeight="40dp"
-        android:paddingHorizontal="12dp"
-        android:paddingVertical="6dp"
+        android:layout_marginStart="6dp"
+        android:minHeight="@dimen/size_48"
         android:text="编辑"
         android:textColor="@color/md_primary"
+        android:textStyle="bold"
         android:textSize="13sp"
-        android:textStyle="bold" />
+        app:cornerRadius="@dimen/radius_pill" />
 
-    <TextView
+    <com.google.android.material.button.MaterialButton
         android:id="@+id/btnDeleteTask"
+        style="@style/Widget.Material3.Button.TextButton"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginStart="8dp"
-        android:gravity="center"
-        android:minHeight="40dp"
-        android:paddingHorizontal="12dp"
-        android:paddingVertical="6dp"
+        android:layout_marginStart="2dp"
+        android:minHeight="@dimen/size_48"
         android:text="删除"
         android:textColor="@color/md_error"
+        android:textStyle="bold"
         android:textSize="13sp"
-        android:textStyle="bold" />
+        app:cornerRadius="@dimen/radius_pill" />
 
 </LinearLayout>

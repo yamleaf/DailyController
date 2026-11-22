@@ -4,8 +4,14 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.TextView
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
+import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.bottomsheet.BottomSheetDialog
+import com.google.android.material.button.MaterialButton
 import com.google.android.material.timepicker.MaterialTimePicker
 import com.google.android.material.timepicker.TimeFormat
 import com.yample.daily.controller.databinding.DialogMsgChannelBinding
@@ -225,8 +231,7 @@ class SettingsFragment : Fragment(), SnapshotFragment {
                 if (obj.size() > 0) onMsgConfigSave?.invoke(obj.toString())
                 if (newChannel != channel) onChannelChange?.invoke(newChannel)
                 if (obj.size() == 0 && newChannel == channel) {
-                    android.widget.Toast
-                        .makeText(requireContext(), "没有需要下发的修改", android.widget.Toast.LENGTH_SHORT).show()
+                    UiNotice.show(requireContext(), view, "没有需要下发的修改", false)
                 }
                 true
             }
@@ -352,11 +357,7 @@ class SettingsFragment : Fragment(), SnapshotFragment {
      * 选择「息屏」需先弹完整提示确认（三步前置设置 + 风险声明），确认后才应用 */
     private fun showScreenModeDialog(item: SettingItem) {
         if (!item.writable) {
-            android.widget.Toast.makeText(
-                requireContext(),
-                "伪息屏开启时由伪息屏策略接管，不可修改屏幕模式",
-                android.widget.Toast.LENGTH_SHORT
-            ).show()
+            UiNotice.show(requireContext(), view, "伪息屏开启时由伪息屏策略接管，不可修改屏幕模式", false)
             return
         }
         val current = ((item.value as? Int) ?: 0).coerceIn(0, 2)
@@ -395,29 +396,36 @@ class SettingsFragment : Fragment(), SnapshotFragment {
         }
     }
 
-    /** 自定义工作日：多选星期（周一~周日），序列化为 "1,2,3,4,5" 下发 cw 字段 */
+    /** 自定义工作日：底部弹层 + 星期 chip 网格（与被控端一致），序列化 "1,2,3,4,5" 下发 cw 字段 */
     private fun showWorkdayDialog(item: SettingItem) {
-        val raw = item.value.toString()
-        val selected = parseWorkdayValues(raw).toMutableSet()
-        val labels = WEEKDAY_LABELS
-        val checked = BooleanArray(7) { it + 1 in selected }
-        android.app.AlertDialog.Builder(requireContext())
-            .setTitle("自定义工作日")
-            .setMultiChoiceItems(labels.toTypedArray(), checked) { _, which, isChecked ->
-                if (isChecked) selected.add(which + 1) else selected.remove(which + 1)
+        val selected = parseWorkdayValues(item.value.toString()).toMutableSet()
+        // ctx 在弹层打开时解析一次并捕获进 lambda：点击回调里再调 requireContext()，
+        // 若期间 Fragment 已 detach（Activity 重建/宿主回收）会抛 IllegalStateException 闪退。
+        val ctx = requireContext()
+        val view = layoutInflater.inflate(R.layout.sheet_select_workday, null)
+        val sheet = BottomSheetDialog(ctx)
+        sheet.setContentView(view)
+
+        val adapter = WorkdayChipAdapter(selected) {
+            UiNotice.show(ctx, view, "至少保留一天为工作日", false)
+        }
+        view.findViewById<RecyclerView>(R.id.workdayRecycler).apply {
+            layoutManager = GridLayoutManager(ctx, 4)
+            this.adapter = adapter
+        }
+        view.findViewById<MaterialButton>(R.id.cancelButton).setOnClickListener { sheet.dismiss() }
+        view.findViewById<MaterialButton>(R.id.confirmButton).setOnClickListener {
+            if (selected.isEmpty()) {
+                UiNotice.show(ctx, view, "至少保留一天为工作日", false)
+                return@setOnClickListener
             }
-            .setPositiveButton("保存") { _, _ ->
-                if (selected.isEmpty()) {
-                    android.widget.Toast.makeText(requireContext(), "至少保留一天为工作日", android.widget.Toast.LENGTH_SHORT).show()
-                    return@setPositiveButton
-                }
-                val serialized = serializeWorkdayValues(selected)
-                item.value = serialized
-                onStringChange?.invoke(item, serialized)
-                settingAdapter.notifyDataSetChanged()
-            }
-            .setNegativeButton("取消", null)
-            .show()
+            val serialized = serializeWorkdayValues(selected)
+            item.value = serialized
+            onStringChange?.invoke(item, serialized)
+            settingAdapter.notifyDataSetChanged()
+            sheet.dismiss()
+        }
+        sheet.show()
     }
 
     private fun parseWorkdayValues(raw: String): Set<Int> =
@@ -464,6 +472,48 @@ class SettingsFragment : Fragment(), SnapshotFragment {
             value.contains("未") || value == "已授权但断开" -> R.color.md_error
             else -> R.color.md_onSurface
         })
+    }
+
+    /** 星期 chip 网格适配器（4 列）：实心/描边反映工作日选中态；唯一选中项再点不取消 */
+    private class WorkdayChipAdapter(
+        private val selected: MutableSet<Int>,
+        private val onKeepOne: () -> Unit
+    ) : RecyclerView.Adapter<WorkdayChipAdapter.Vh>() {
+
+        class Vh(view: View) : RecyclerView.ViewHolder(view) {
+            val chip: TextView = view.findViewById(R.id.chipView)
+        }
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Vh = Vh(
+            LayoutInflater.from(parent.context).inflate(R.layout.item_workday_chip, parent, false)
+        )
+
+        override fun getItemCount(): Int = 7
+
+        override fun onBindViewHolder(holder: Vh, pos: Int) {
+            val day = pos + 1 // 1=周一 ... 7=周日
+            val chip = holder.chip
+            chip.text = SettingsFragment.WEEKDAY_LABELS[pos]
+            bindState(chip, day in selected)
+            chip.setOnClickListener {
+                if (day in selected && selected.size == 1) {
+                    onKeepOne()
+                    return@setOnClickListener
+                }
+                if (day in selected) selected.remove(day) else selected.add(day)
+                bindState(chip, day in selected)
+            }
+        }
+
+        private fun bindState(chip: TextView, isSelected: Boolean) {
+            chip.isSelected = isSelected
+            chip.setTextColor(
+                ContextCompat.getColor(
+                    chip.context,
+                    if (isSelected) R.color.md_onPrimaryContainer else R.color.md_onSurfaceVariant
+                )
+            )
+        }
     }
 
     override fun onDestroyView() {

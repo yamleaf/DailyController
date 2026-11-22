@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 按压反馈：描边加粗，仍走圆角 shape（比 foreground 的矩形 ripple 更贴合 pill 外形） -->
+    <item android:state_pressed="true" android:state_selected="true">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/md_primaryContainer" />
+            <stroke android:width="2dp" android:color="@color/md_primary" />
+            <corners android:radius="@dimen/radius_xl" />
+        </shape>
+    </item>
+    <item android:state_pressed="true">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/md_surfaceContainerLow" />
+            <stroke android:width="2dp" android:color="@color/md_outlineVariant" />
+            <corners android:radius="@dimen/radius_xl" />
+        </shape>
+    </item>
+    <!-- 选中：品牌主色浅容器底（tonal，与控制端设计语言一致） -->
+    <item android:state_selected="true">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/md_primaryContainer" />
+            <stroke android:width="1dp" android:color="@color/md_primary" />
+            <corners android:radius="@dimen/radius_xl" />
+        </shape>
+    </item>
+    <!-- 未选中：浅灰底 + 细描边 -->
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@color/md_surfaceContainerLow" />
+            <stroke android:width="1dp" android:color="@color/md_outlineVariant" />
+            <corners android:radius="@dimen/radius_xl" />
+        </shape>
+    </item>
+</selector>

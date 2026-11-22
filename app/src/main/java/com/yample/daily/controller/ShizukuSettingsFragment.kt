@@ -5,7 +5,6 @@ import android.os.SystemClock
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Toast
 import androidx.fragment.app.Fragment
 import com.yample.daily.controller.databinding.FragmentShizukuSettingsBinding
 import com.yample.mqttprotocol.Protocol
@@ -76,13 +75,13 @@ class ShizukuSettingsFragment : Fragment(), SnapshotFragment {
         if (!commandsEnabled || !serviceUnavailable) return
         val now = SystemClock.elapsedRealtime()
         if (now - lastActivateAt < 12_000L) {
-            Toast.makeText(requireContext(), "激活指令已下发，请等待回执后再重试", Toast.LENGTH_SHORT).show()
+            UiNotice.show(requireContext(), view, "激活指令已下发，请等待回执后再重试", false)
             return
         }
         lastActivateAt = now
         val act = activity as? DeviceControlActivity ?: return
         act.sendShizukuStart()
-        Toast.makeText(requireContext(), "已下发「激活 Shizuku」指令，等待被控端确认服务启动…", Toast.LENGTH_SHORT).show()
+        UiNotice.show(requireContext(), view, "已下发「激活 Shizuku」指令，等待被控端确认服务启动…", false)
     }
 
     /** 服务可用 + 已授权 且 未解绑 → 操作/配置可用（授权即开启，无独立开关） */
@@ -157,6 +156,6 @@ class ShizukuSettingsFragment : Fragment(), SnapshotFragment {
             else -> action
         }
         act.sendShizukuAction(action)
-        Toast.makeText(requireContext(), "已下发：$label", Toast.LENGTH_SHORT).show()
+        UiNotice.show(requireContext(), view, "已下发：$label", false)
     }
 }

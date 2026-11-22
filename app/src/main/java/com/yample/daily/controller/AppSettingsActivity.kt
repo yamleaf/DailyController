@@ -2,8 +2,6 @@ package com.yample.daily.controller
 
 import android.content.ClipData
 import android.content.ClipboardManager
-import android.content.Context
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -12,7 +10,6 @@ import android.util.Log
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
-import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -99,7 +96,7 @@ class AppSettingsActivity : AppCompatActivity() {
                 enableOfflineNotify()
             } else {
                 binding.switchNotifyOffline.isChecked = false
-                Toast.makeText(this, "未授予通知权限，无法开启离线提醒", Toast.LENGTH_SHORT).show()
+                UiNotice.show(this@AppSettingsActivity, binding.root, "未授予通知权限，无法开启离线提醒", false)
             }
         }
     }
@@ -107,7 +104,7 @@ class AppSettingsActivity : AppCompatActivity() {
     private fun enableOfflineNotify() {
         OfflineMonitorService.setEnabled(this, true)
         OfflineMonitorService.startCompat(this)
-        Toast.makeText(this, "设备通知已开启：告警会话缓存约 2 小时内可补收", Toast.LENGTH_SHORT).show()
+        UiNotice.show(this@AppSettingsActivity, binding.root, "设备通知已开启：告警会话缓存约 2 小时内可补收", false)
     }
 
     // ===================== 数据备份（导出/导入） =====================
@@ -260,7 +257,7 @@ class AppSettingsActivity : AppCompatActivity() {
                 val pass = input.text?.toString().orEmpty()
                 if (pass.length < minLength) {
                     if (minLength > 0) {
-                        Toast.makeText(this, "口令长度至少 $minLength 位", Toast.LENGTH_SHORT).show()
+                        UiNotice.show(this@AppSettingsActivity, binding.root, "口令长度至少 $minLength 位", false)
                         return@showForm false
                     }
                 }
@@ -385,7 +382,7 @@ class AppSettingsActivity : AppCompatActivity() {
             onConfirm = {
                 val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
                 cm.setPrimaryClip(ClipData.newPlainText("版本信息", sb.toString().trimEnd()))
-                Toast.makeText(this, "已复制全部版本信息到剪贴板", Toast.LENGTH_SHORT).show()
+                UiNotice.show(this@AppSettingsActivity, binding.root, "已复制全部版本信息到剪贴板", false)
                 true
             }
         )

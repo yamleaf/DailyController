@@ -53,15 +53,18 @@
                 android:textSize="12sp" />
         </LinearLayout>
 
-        <TextView
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnKick"
+            style="@style/Widget.Material3.Button.TextButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="@dimen/dp_12"
+            android:layout_marginStart="@dimen/dp_4"
+            android:minHeight="@dimen/size_48"
             android:text="下线"
             android:textColor="@color/md_error"
+            android:textStyle="bold"
             android:textSize="13sp"
-            android:textStyle="bold" />
+            app:cornerRadius="@dimen/radius_pill" />
     </LinearLayout>
 
 </com.google.android.material.card.MaterialCardView>

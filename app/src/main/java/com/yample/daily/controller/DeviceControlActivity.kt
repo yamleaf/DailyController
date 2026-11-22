@@ -6,22 +6,18 @@ import android.content.Intent
 import android.content.res.ColorStateList
 import android.util.Log
 import androidx.transition.TransitionManager
-import android.graphics.Outline
 import android.graphics.Typeface
-import android.view.ViewOutlineProvider
 import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.TextView
-import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.room.Room
 import com.google.android.material.bottomsheet.BottomSheetDialog
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.snackbar.Snackbar
 import com.google.android.material.transition.MaterialFadeThrough
 import com.google.gson.Gson
@@ -51,10 +47,7 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.TimeoutCancellationException
 import org.eclipse.paho.client.mqttv3.*
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence
-import java.text.SimpleDateFormat
 import java.util.ArrayDeque
-import java.util.Date
-import java.util.Locale
 import java.util.UUID
 
 class DeviceControlActivity : AppCompatActivity() {
@@ -223,7 +216,7 @@ binding = ActivityDeviceControlBinding.inflate(layoutInflater)
         // 单行 fetchById 通常 <10ms，冷启动瞬时阻塞可接受（已评估，非无意阻塞）。
         val loaded = runBlocking(Dispatchers.IO) { db.deviceDao().getById(deviceId) }
         if (loaded == null) {
-            Toast.makeText(this, "设备记录不存在", Toast.LENGTH_SHORT).show(); finish(); return
+            UiNotice.show(this@DeviceControlActivity, "设备记录不存在", false); finish(); return
         }
         device = loaded
         remoteEnabled = prefs.getBoolean("remote_enabled_${device.deviceId}", true)
@@ -376,7 +369,7 @@ binding = ActivityDeviceControlBinding.inflate(layoutInflater)
             onAction = { action -> sendAction(action) }
             onLoopToggle = { on ->
                 sendUpdate(Protocol.FIELD_TASK_AUTO_RECYCLE, PacketValue.BooleanValue(on))
-                Toast.makeText(this@DeviceControlActivity, if (on) "已下发开启循环" else "已下发关闭循环", Toast.LENGTH_SHORT).show()
+                UiNotice.show(this@DeviceControlActivity, if (on) "已下发开启循环" else "已下发关闭循环", false)
             }
             onRePairClick = { showRePairSheet() }
             onRetryClick = { retryConnection() }
@@ -763,7 +756,7 @@ private fun setupControllerNav() {
         if (key == lastToastKey && now - lastToastAt < dedupeWindowMs) return
         lastToastKey = key
         lastToastAt = now
-        Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+        UiNotice.show(this@DeviceControlActivity, msg, true)
     }
 
     /**
@@ -803,7 +796,7 @@ private fun setupControllerNav() {
         } else {
             runOnUiThread {
                 setConnStatus(ConnState.CONNECTED_UNPAIRED)
-                Toast.makeText(this, "配对失败：被控端未确认。请确认被控端已点「生成绑定二维码」，再重新扫码", Toast.LENGTH_LONG).show()
+                UiNotice.show(this@DeviceControlActivity, "配对失败：被控端未确认。请确认被控端已点「生成绑定二维码」，再重新扫码", true)
             }
         }
     }
@@ -967,7 +960,7 @@ private fun setupControllerNav() {
                     db.deviceDao().deleteById(device.deviceId)
                     OfflineMonitorService.requestRefresh(this@DeviceControlActivity)
                     runOnUiThread {
-                        Toast.makeText(this@DeviceControlActivity, "设备已删除", Toast.LENGTH_SHORT).show()
+                        UiNotice.show(this@DeviceControlActivity, "设备已删除", false)
                         finish()
                     }
                 }
@@ -996,11 +989,7 @@ private fun setupControllerNav() {
             if (force) "设备已被强制解绑，请重新配对绑定" else "设备已解绑，请重新配对绑定"
         )
         overviewFragment.setStaleBanner(true)
-        Toast.makeText(
-            this,
-            if (force) "该设备已被强制解绑，请使用被控端重新配对" else "该设备已解绑，请使用被控端重新配对",
-            Toast.LENGTH_LONG
-        ).show()
+        UiNotice.show(this@DeviceControlActivity, if (force) "该设备已被强制解绑，请使用被控端重新配对" else "该设备已解绑，请使用被控端重新配对", true)
     }
 
     private fun onPairAccepted(payload: String) {
@@ -1029,7 +1018,7 @@ private fun setupControllerNav() {
             Log.w(TAG, "PA 验签失败，忽略伪造配对确认")
             runOnUiThread {
                 setConnStatus(ConnState.CONNECTED_UNPAIRED)
-                Toast.makeText(this, "配对确认验签失败，请重新扫码", Toast.LENGTH_LONG).show()
+                UiNotice.show(this@DeviceControlActivity, "配对确认验签失败，请重新扫码", true)
             }
             return
         }
@@ -1054,7 +1043,7 @@ private fun setupControllerNav() {
             // 恢复所有远程操作控件（解绑时被禁用的刷新 / MQTT 开关 / 快捷动作 / 任务设置页 / 重配对入口隐藏）
             applyBoundUiState()
             setConnStatus(ConnState.ONLINE)
-            Toast.makeText(this, "已与控制端完成配对", Toast.LENGTH_SHORT).show()
+            UiNotice.show(this@DeviceControlActivity, "已与控制端完成配对", false)
         }
         // 配对刚完成即视为「首次在线」：发起一次探活 + 快照拉取（含重试与离线判定）
         startFirstEntryProbe()
@@ -1116,16 +1105,16 @@ private fun setupControllerNav() {
                         // 被控端尚未生成配对码：停止重试循环，避免一直卡在“配对中”
                         mainHandler.removeCallbacks(PAIR_TIMEOUT_RUNNABLE)
                         setConnStatus(ConnState.CONNECTED_UNPAIRED)
-                        Toast.makeText(this, "被控端：尚未生成配对码。请在被控端「远程控制」页点「生成绑定二维码」，再重新扫码", Toast.LENGTH_LONG).show()
+                        UiNotice.show(this@DeviceControlActivity, "被控端：尚未生成配对码。请在被控端「远程控制」页点「生成绑定二维码」，再重新扫码", true)
                     }
                     "TOKEN_MISMATCH" -> {
                         // 配对码不一致/已过期：停止重试，提示重新生成二维码
                         mainHandler.removeCallbacks(PAIR_TIMEOUT_RUNNABLE)
                         setConnStatus(ConnState.CONNECTED_UNPAIRED)
-                        Toast.makeText(this, "被控端：配对码不一致或已过期。请重新生成二维码后重新扫码", Toast.LENGTH_LONG).show()
+                        UiNotice.show(this@DeviceControlActivity, "被控端：配对码不一致或已过期。请重新生成二维码后重新扫码", true)
                     }
-                    "UNBOUND" -> Toast.makeText(this, "被控端：当前未绑定，请先用二维码完成配对", Toast.LENGTH_SHORT).show()
-                    "SIGN_FAIL" -> Toast.makeText(this, "被控端：指令签名校验失败", Toast.LENGTH_SHORT).show()
+                    "UNBOUND" -> UiNotice.show(this@DeviceControlActivity, "被控端：当前未绑定，请先用二维码完成配对", false)
+                    "SIGN_FAIL" -> UiNotice.show(this@DeviceControlActivity, "被控端：指令签名校验失败", false)
                     // 成功路径：以被控端快照为准刷新 UI（防增量 push 漏发漏刷）；不做本地乐观写。
                     // 延迟拉全量见 forceRefreshSnapshot：ACK 可能早于被控端状态落地。
                     "SUCCESS" -> {
@@ -1136,7 +1125,7 @@ private fun setupControllerNav() {
                             val cmd = pendingCommands[packet.rid]
                             // 更新节假日：命令下发成功且被控端回 SUCCESS 回执后才提示「已下发成功」
                             if (cmd?.field == Protocol.FIELD_UPDATE_HOLIDAY) {
-                                Toast.makeText(this, "节假日更新已下发成功", Toast.LENGTH_SHORT).show()
+                                UiNotice.show(this@DeviceControlActivity, "节假日更新已下发成功", false)
                             }
                             // 乐观更新本地缓存：下发字段直接写入 settings 区块对应项并刷新 UI，
                             // 立即反映下发结果（不等 QUERY 往返）；被控端增量推送/拉全量随后校准
@@ -1158,43 +1147,43 @@ private fun setupControllerNav() {
                             if (cmd?.field == Protocol.FIELD_REMOTE_ENABLED &&
                                 (cmd.value as? PacketValue.BooleanValue)?.b == false
                             ) {
-                                Toast.makeText(this, "远程控制已关闭", Toast.LENGTH_SHORT).show()
+                                UiNotice.show(this@DeviceControlActivity, "远程控制已关闭", false)
                             } else {
                                 forceRefreshSnapshot()
                             }
                         }
                     }
-                    "TASK_OK" -> Toast.makeText(this, "任务已更新", Toast.LENGTH_SHORT).show()
+                    "TASK_OK" -> UiNotice.show(this@DeviceControlActivity, "任务已更新", false)
                     // 以下失败回执一律补拉一次快照：本地 UI（Switch/任务列表）在下发时已乐观翻转，
                     // 若被控端拒绝而不回滚，本地显示会与被控端真实状态长期不一致。
                     "TASK_FAIL" -> {
-                        Toast.makeText(this, "任务操作失败：$detail", Toast.LENGTH_LONG).show()
+                        UiNotice.show(this@DeviceControlActivity, "任务操作失败：$detail", true)
                         forceRefreshSnapshot()
                     }
                     "ACTION_FAIL" -> {
-                        Toast.makeText(this, "动作执行失败：$detail", Toast.LENGTH_LONG).show()
+                        UiNotice.show(this@DeviceControlActivity, "动作执行失败：$detail", true)
                         forceRefreshSnapshot()
                     }
-                    "SNAPSHOT_FAIL" -> Toast.makeText(this, "快照生成失败", Toast.LENGTH_SHORT).show()
+                    "SNAPSHOT_FAIL" -> UiNotice.show(this@DeviceControlActivity, "快照生成失败", false)
                     "NEED_MANUAL" -> {
-                        Toast.makeText(this, "该设置需在系统/被控端手动开启（如无障碍、截屏权限）", Toast.LENGTH_LONG).show()
+                        UiNotice.show(this@DeviceControlActivity, "该设置需在系统/被控端手动开启（如无障碍、截屏权限）", true)
                         forceRefreshSnapshot()
                     }
                     "SERVICE_UNAVAILABLE" -> {
-                        Toast.makeText(this, "被控端服务未就绪（通知监听未运行），动作未执行", Toast.LENGTH_LONG).show()
+                        UiNotice.show(this@DeviceControlActivity, "被控端服务未就绪（通知监听未运行），动作未执行", true)
                         forceRefreshSnapshot()
                     }
-                    "UNKNOWN_ACTION" -> Toast.makeText(this, "未知动作：$result", Toast.LENGTH_SHORT).show()
+                    "UNKNOWN_ACTION" -> UiNotice.show(this@DeviceControlActivity, "未知动作：$result", false)
                     "DUP_OR_STALE" -> {
-                        Toast.makeText(this, "被控端：请求已过期或重复（请检查两端时间是否一致）", Toast.LENGTH_LONG).show()
+                        UiNotice.show(this@DeviceControlActivity, "被控端：请求已过期或重复（请检查两端时间是否一致）", true)
                         forceRefreshSnapshot()
                     }
                     "START_SENT" -> {
                         // 旧版被控端只回「广播已投递」：保留提示但不认为服务已起
-                        Toast.makeText(this, "Shizuku 启动广播已下发，等待服务就绪", Toast.LENGTH_LONG).show()
+                        UiNotice.show(this@DeviceControlActivity, "Shizuku 启动广播已下发，等待服务就绪", true)
                     }
                     "START_OK" -> {
-                        Toast.makeText(this, "Shizuku 已激活（$detail）", Toast.LENGTH_LONG).show()
+                        UiNotice.show(this@DeviceControlActivity, "Shizuku 已激活（$detail）", true)
                         forceRefreshSnapshot(800L)
                     }
                     "START_FAIL" -> {
@@ -1204,12 +1193,12 @@ private fun setupControllerNav() {
                             "TIMEOUT" -> "等待服务启动超时，请检查自启动权限/无线调试"
                             else -> detail.ifBlank { "未知原因" }
                         }
-                        Toast.makeText(this, "Shizuku 激活失败：$reason", Toast.LENGTH_LONG).show()
+                        UiNotice.show(this@DeviceControlActivity, "Shizuku 激活失败：$reason", true)
                         forceRefreshSnapshot()
                     }
                     // CMD_SYNC 的探活回执，无需打扰用户
                     "ONLINE" -> Unit
-                    else -> Toast.makeText(this, "设备回执：$result", Toast.LENGTH_SHORT).show()
+                    else -> UiNotice.show(this@DeviceControlActivity, "设备回执：$result", false)
                 }
                 // 按 rid 精确关联指令名，避免连续下发时「最近指令」张冠李戴；取不到再退回单变量兜底
                 val ackRid = packet.rid
@@ -1481,7 +1470,7 @@ private fun setupControllerNav() {
             }
         } catch (e: Exception) {
             e.printStackTrace()
-            runOnUiThread { Toast.makeText(this, "快照解析失败：${e.message}", Toast.LENGTH_LONG).show() }
+            runOnUiThread { UiNotice.show(this@DeviceControlActivity, "快照解析失败：${e.message}", true) }
         }
     }
 
@@ -1817,13 +1806,13 @@ val calendar = CalendarSnapshot(
     // ===================== 下发指令 =====================
     private fun sendUpdate(field: String, value: PacketValue) {
         if (!remoteEnabled) {
-            Toast.makeText(this, "MQTT 连接已关闭，无法修改设置", Toast.LENGTH_SHORT).show(); return
+            UiNotice.show(this@DeviceControlActivity, "MQTT 连接已关闭，无法修改设置", false); return
         }
         if (device.sessionSecret.isBlank()) {
-            Toast.makeText(this, "尚未完成配对，无法下发指令", Toast.LENGTH_SHORT).show(); return
+            UiNotice.show(this@DeviceControlActivity, "尚未完成配对，无法下发指令", false); return
         }
         if (mqttClient?.isConnected != true) {
-            Toast.makeText(this, "MQTT 未连接，设置未下发", Toast.LENGTH_SHORT).show()
+            UiNotice.show(this@DeviceControlActivity, "MQTT 未连接，设置未下发", false)
             refreshCurrentFragment()
             return
         }
@@ -1851,7 +1840,7 @@ val calendar = CalendarSnapshot(
                 e.printStackTrace()
                 pendingCommands.remove(rid)
                 runOnUiThread {
-                    Toast.makeText(this@DeviceControlActivity, "指令发送失败", Toast.LENGTH_SHORT).show()
+                    UiNotice.show(this@DeviceControlActivity, "指令发送失败", false)
                     refreshCurrentFragment()
                 }
             }
@@ -1860,14 +1849,14 @@ val calendar = CalendarSnapshot(
 
     private fun sendTask(action: String, time: String, oldTime: String? = null, name: String? = null) {
         if (!remoteEnabled) {
-            Toast.makeText(this, "MQTT 连接已关闭，无法编辑任务", Toast.LENGTH_SHORT).show(); return
+            UiNotice.show(this@DeviceControlActivity, "MQTT 连接已关闭，无法编辑任务", false); return
         }
         if (device.sessionSecret.isBlank()) {
-            Toast.makeText(this, "尚未完成配对，无法下发指令", Toast.LENGTH_SHORT).show(); return
+            UiNotice.show(this@DeviceControlActivity, "尚未完成配对，无法下发指令", false); return
         }
         // 同 sendUpdate：断线时 publish 会静默 no-op，用户以为任务已增删改，实际未下发
         if (mqttClient?.isConnected != true) {
-            Toast.makeText(this, "MQTT 未连接，任务操作未下发", Toast.LENGTH_SHORT).show()
+            UiNotice.show(this@DeviceControlActivity, "MQTT 未连接，任务操作未下发", false)
             refreshCurrentFragment()
             return
         }
@@ -1896,7 +1885,7 @@ val calendar = CalendarSnapshot(
                 e.printStackTrace()
                 pendingCommands.remove(rid)
                 runOnUiThread {
-                    Toast.makeText(this@DeviceControlActivity, "指令发送失败", Toast.LENGTH_SHORT).show()
+                    UiNotice.show(this@DeviceControlActivity, "指令发送失败", false)
                     refreshCurrentFragment()
                 }
             }
@@ -2090,10 +2079,10 @@ val calendar = CalendarSnapshot(
             onPos = {
                 val code = input?.text.toString().trim()
                 if (code.isBlank()) {
-                    Toast.makeText(this@DeviceControlActivity, "验证码不能为空", Toast.LENGTH_SHORT).show()
+                    UiNotice.show(this@DeviceControlActivity, "验证码不能为空", false)
                 } else {
                     sendUpdate(Protocol.FIELD_VERIFY_CODE, PacketValue.StringValue(code))
-                    Toast.makeText(this@DeviceControlActivity, "已下发验证码", Toast.LENGTH_SHORT).show()
+                    UiNotice.show(this@DeviceControlActivity, "已下发验证码", false)
                     shizukuWaitDialog?.dismiss(); shizukuWaitDialog = null
                 }
             },
@@ -2134,7 +2123,7 @@ val calendar = CalendarSnapshot(
                     setOnClickListener {
                         (getSystemService(CLIPBOARD_SERVICE) as? android.content.ClipboardManager)
                             ?.setPrimaryClip(android.content.ClipData.newPlainText(label, copyText))
-                        Toast.makeText(this@DeviceControlActivity, "已复制$label", Toast.LENGTH_SHORT).show()
+                        UiNotice.show(this@DeviceControlActivity, "已复制$label", false)
                     }
                 }
 
@@ -2193,14 +2182,14 @@ val calendar = CalendarSnapshot(
                     val uri = android.net.Uri.parse("smsto:$recipient")
                     val intent = Intent(Intent.ACTION_SENDTO, uri).putExtra("sms_body", content)
                     runCatching { startActivity(intent) }.onFailure {
-                        Toast.makeText(this@DeviceControlActivity, "未找到可用的短信应用", Toast.LENGTH_SHORT).show()
+                        UiNotice.show(this@DeviceControlActivity, "未找到可用的短信应用", false)
                     }
                 })
                 val gap = android.view.View(this@DeviceControlActivity)
                 addView(gap, android.widget.LinearLayout.LayoutParams(dp(8), 1))
                 addView(pillBtn("已完成", ContextCompat.getColor(this@DeviceControlActivity, R.color.md_success)) {
                     sendUpdate(Protocol.FIELD_SMS_SENT, PacketValue.StringValue("1"))
-                    Toast.makeText(this@DeviceControlActivity, "已通知被控端继续", Toast.LENGTH_SHORT).show()
+                    UiNotice.show(this@DeviceControlActivity, "已通知被控端继续", false)
                     shizukuWaitDialog?.dismiss(); shizukuWaitDialog = null
                 })
             })
@@ -2271,7 +2260,7 @@ val calendar = CalendarSnapshot(
             onConfirm = { dlg ->
                 val code = input.text.toString().trim()
                 if (code.isBlank()) {
-                    Toast.makeText(this, "验证码不能为空", Toast.LENGTH_SHORT).show()
+                    UiNotice.show(this@DeviceControlActivity, "验证码不能为空", false)
                     false
                 } else {
                     sendUpdate(Protocol.FIELD_VERIFY_CODE, PacketValue.StringValue(code))
@@ -2285,13 +2274,13 @@ val calendar = CalendarSnapshot(
     // ===================== 一次性动作指令 =====================
     private fun sendAction(action: String) {
         if (!remoteEnabled) {
-            Toast.makeText(this, "MQTT 连接已关闭，无法下发动作", Toast.LENGTH_SHORT).show(); return
+            UiNotice.show(this@DeviceControlActivity, "MQTT 连接已关闭，无法下发动作", false); return
         }
         if (device.sessionSecret.isBlank()) {
-            Toast.makeText(this, "尚未完成配对，无法下发指令", Toast.LENGTH_SHORT).show(); return
+            UiNotice.show(this@DeviceControlActivity, "尚未完成配对，无法下发指令", false); return
         }
         if (mqttClient?.isConnected != true) {
-            Toast.makeText(this, "MQTT 未连接，无法下发指令", Toast.LENGTH_SHORT).show(); return
+            UiNotice.show(this@DeviceControlActivity, "MQTT 未连接，无法下发指令", false); return
         }
         // D2：下发中置灰快捷按钮防重复点击；10s 兜底自动恢复（避免 ACK 丢失时永久置灰）
         overviewFragment.setActionsBusy(true)
@@ -2327,7 +2316,7 @@ val calendar = CalendarSnapshot(
                 // 刻意不调 sendQuery()：早前在此查询会占用 sendQuery 并发槽位（queryPendingRid）且快照早于任务落地=旧状态。
                 // 正确路径只一条：被控端 START/STOP 会主动推增量 statuses/runtime/tasks，onPush 按 delta 合并刷新。
                 runOnUiThread {
-                    Toast.makeText(this@DeviceControlActivity, "已发送动作：$label", Toast.LENGTH_SHORT).show()
+                    UiNotice.show(this@DeviceControlActivity, "已发送动作：$label", false)
                     // 结果型操作弹等待反馈窗（结果回传时关闭等待窗并弹结果）
                     when (action) {
                         MqttPacket.ACTION_PUNCH -> showPunchWaitingDialog()
@@ -2341,7 +2330,7 @@ val calendar = CalendarSnapshot(
                     if (pendingActionRid == rid) pendingActionRid = null
                     overviewFragment.setActionsBusy(false)
                     mainHandler.removeCallbacks(actionBusyResetRunnable)
-                    Toast.makeText(this@DeviceControlActivity, "动作指令发送失败", Toast.LENGTH_SHORT).show()
+                    UiNotice.show(this@DeviceControlActivity, "动作指令发送失败", false)
                 }
             }
         }
@@ -2662,7 +2651,7 @@ val calendar = CalendarSnapshot(
             }
             db.deviceDao().deleteById(device.deviceId)
             withContext(Dispatchers.Main) {
-                Toast.makeText(this@DeviceControlActivity, "已解绑", Toast.LENGTH_SHORT).show()
+                UiNotice.show(this@DeviceControlActivity, "已解绑", false)
                 finish()
             }
         }
@@ -2764,10 +2753,10 @@ val calendar = CalendarSnapshot(
             if (payload.broker.isNotBlank() && payload.deviceId.isNotBlank()) {
                 applyRePair(payload)
             } else {
-                Toast.makeText(this, "二维码缺少必要字段（broker/deviceId）", Toast.LENGTH_SHORT).show()
+                UiNotice.show(this@DeviceControlActivity, "二维码缺少必要字段（broker/deviceId）", false)
             }
         } catch (e: Exception) {
-            Toast.makeText(this, "无效的二维码格式", Toast.LENGTH_SHORT).show()
+            UiNotice.show(this@DeviceControlActivity, "无效的二维码格式", false)
         }
     }
 
@@ -2776,7 +2765,7 @@ val calendar = CalendarSnapshot(
         val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
         val text = cm.primaryClip?.getItemAt(0)?.text?.toString()
         if (text.isNullOrBlank()) {
-            Toast.makeText(this, "剪贴板为空，请先在被控端「远程控制」页点「生成绑定二维码」（会自动复制到剪贴板）", Toast.LENGTH_LONG).show()
+            UiNotice.show(this@DeviceControlActivity, "剪贴板为空，请先在被控端「远程控制」页点「生成绑定二维码」（会自动复制到剪贴板）", true)
             return
         }
         try {
@@ -2784,10 +2773,10 @@ val calendar = CalendarSnapshot(
             if (payload.broker.isNotBlank() && payload.deviceId.isNotBlank()) {
                 applyRePair(payload)
             } else {
-                Toast.makeText(this, "剪贴板内容缺少必要字段（broker/deviceId）", Toast.LENGTH_SHORT).show()
+                UiNotice.show(this@DeviceControlActivity, "剪贴板内容缺少必要字段（broker/deviceId）", false)
             }
         } catch (e: Exception) {
-            Toast.makeText(this, "剪贴板内容不是有效的配对信息", Toast.LENGTH_SHORT).show()
+            UiNotice.show(this@DeviceControlActivity, "剪贴板内容不是有效的配对信息", false)
         }
     }
 
@@ -2812,7 +2801,7 @@ val calendar = CalendarSnapshot(
                 // 不重开则 initMqtt 兜底守卫会拦截、配对永远无法发起）
                 remoteEnabled = true
                 prefs.edit().putBoolean("remote_enabled_${device.deviceId}", true).apply()
-                Toast.makeText(this@DeviceControlActivity, "已更新配对信息，正在重新配对…", Toast.LENGTH_SHORT).show()
+                UiNotice.show(this@DeviceControlActivity, "已更新配对信息，正在重新配对…", false)
                 setConnStatus(ConnState.CONNECTING)
                 disconnectMqtt()
                 initMqtt()

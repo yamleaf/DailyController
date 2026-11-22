@@ -7,7 +7,6 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
-import android.widget.Toast
 import androidx.fragment.app.Fragment
 import com.yample.mqttprotocol.MqttPacket
 import com.yample.mqttprotocol.Protocol
@@ -400,9 +399,14 @@ class OverviewFragment : Fragment(), SnapshotFragment {
         binding.layoutAlerts.removeAllViews()
         binding.tvAlertsEmpty.visibility = if (alerts.isEmpty()) View.VISIBLE else View.GONE
         binding.btnAlertsClear.visibility = if (alerts.isEmpty()) View.GONE else View.VISIBLE
+        // 局部变量外提：一次刷新只构造 1 个 formatter / inflater（原来每条告警各 1 个，
+        // 最多 30 条 = 30 次 SimpleDateFormat 构造 + 30 次 LayoutInflater 查找）。
+        // 刻意不提为字段：SimpleDateFormat 非线程安全，局部变量不跨调用/跨线程共享，零并发风险。
+        val inflater = LayoutInflater.from(requireContext())
+        val timeFmt = SimpleDateFormat("MM-dd HH:mm", Locale.CHINA)
         alerts.forEach { alert ->
-            val row = RowInfoBinding.inflate(LayoutInflater.from(requireContext()))
-            val timeStr = SimpleDateFormat("MM-dd HH:mm", Locale.CHINA).format(Date(alert.ts))
+            val row = RowInfoBinding.inflate(inflater)
+            val timeStr = timeFmt.format(Date(alert.ts))
             // 时间统一放最左侧（与标题同行），右侧只留状态摘要
             row.tvRowLabel.text = "$timeStr · ${alert.title}"
             row.tvRowValue.text = when (alert.type) {
@@ -461,10 +465,12 @@ class OverviewFragment : Fragment(), SnapshotFragment {
             binding.layoutRecentCmds.addView(empty)
             return
         }
+        val inflater = LayoutInflater.from(requireContext())
+        val timeFmt = SimpleDateFormat("HH:mm", Locale.CHINA)
         recentCmds.forEach { cmd ->
-            val row = RowInfoBinding.inflate(LayoutInflater.from(requireContext()))
+            val row = RowInfoBinding.inflate(inflater)
             row.tvRowLabel.text = cmd.label ?: "未知指令"
-            val timeStr = SimpleDateFormat("HH:mm", Locale.CHINA).format(Date(cmd.ts))
+            val timeStr = timeFmt.format(Date(cmd.ts))
             val result = cmd.result ?: ""
             row.tvRowValue.text = "$result · $timeStr"
             row.tvRowValue.setTextColor(requireContext().getColor(

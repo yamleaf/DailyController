@@ -3,12 +3,10 @@ package com.yample.daily.controller
 import android.os.Bundle
 import android.view.View
 import android.widget.LinearLayout
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
 import androidx.room.Room
 import com.yample.daily.controller.ServerlessApiClient.ServerlessClient
 import com.yample.daily.controller.databinding.ActivityServerlessManagerBinding
@@ -108,7 +106,7 @@ class ServerlessManagerActivity : AppCompatActivity() {
                 val appId = dlgBinding.etAppId.text.toString().trim()
                 val appSecret = dlgBinding.etAppSecret.text.toString().trim()
                 if (name.isBlank() || url.isBlank() || appId.isBlank() || appSecret.isBlank()) {
-                    Toast.makeText(this, "请完整填写名称、API 地址、AppID、AppSecret", Toast.LENGTH_SHORT).show()
+                    UiNotice.show(this@ServerlessManagerActivity, binding.root, "请完整填写名称、API 地址、AppID、AppSecret", false)
                     return@showForm false
                 }
                 lifecycleScope.launch(Dispatchers.IO) {
@@ -161,17 +159,17 @@ class ServerlessManagerActivity : AppCompatActivity() {
     private fun testBackendConnection(backend: ServerlessBackend) {
         val config = ServerlessApiClient.normalize(backend)
         if (config == null) {
-            Toast.makeText(this, "后台「${backend.name}」配置不完整，请先编辑补全", Toast.LENGTH_SHORT).show()
+            UiNotice.show(this@ServerlessManagerActivity, binding.root, "后台「${backend.name}」配置不完整，请先编辑补全", false)
             return
         }
         lifecycleScope.launch {
             when (val res = ServerlessApiClient.fetchClients(config.first, config.second)) {
                 is ServerlessApiClient.ApiResult.Ok -> {
                     val count = ServerlessApiClient.parseClients(res.json).size
-                    Toast.makeText(this@ServerlessManagerActivity, "连接成功，当前在线客户端 $count 个", Toast.LENGTH_SHORT).show()
+                    UiNotice.show(this@ServerlessManagerActivity, binding.root, "连接成功，当前在线客户端 $count 个", false)
                 }
                 is ServerlessApiClient.ApiResult.Err ->
-                    Toast.makeText(this@ServerlessManagerActivity, "API 请求失败：${res.msg}", Toast.LENGTH_SHORT).show()
+                    UiNotice.show(this@ServerlessManagerActivity, binding.root, "API 请求失败：${res.msg}", false)
             }
         }
     }
@@ -212,11 +210,11 @@ class ServerlessManagerActivity : AppCompatActivity() {
 
     private fun showBackendChooser() {
         if (backends.isEmpty()) {
-            Toast.makeText(this, "还没有配置后台", Toast.LENGTH_SHORT).show()
+            UiNotice.show(this@ServerlessManagerActivity, binding.root, "还没有配置后台", false)
             return
         }
         if (backends.size <= 1) {
-            Toast.makeText(this, "只有一个后台，无需切换", Toast.LENGTH_SHORT).show()
+            UiNotice.show(this@ServerlessManagerActivity, binding.root, "只有一个后台，无需切换", false)
             return
         }
         UnifiedDialogKit.showSingleChoice(
@@ -237,7 +235,7 @@ class ServerlessManagerActivity : AppCompatActivity() {
         val backend = currentBackend ?: return
         val config = ServerlessApiClient.normalize(backend)
         if (config == null) {
-            Toast.makeText(this, "后台「${backend.name}」配置不完整，请先编辑补全", Toast.LENGTH_SHORT).show()
+            UiNotice.show(this@ServerlessManagerActivity, binding.root, "后台「${backend.name}」配置不完整，请先编辑补全", false)
             return
         }
         val (baseUrl, auth) = config
@@ -275,11 +273,11 @@ class ServerlessManagerActivity : AppCompatActivity() {
             lifecycleScope.launch {
                 when (val res = ServerlessApiClient.kickClient(baseUrl, auth, client.clientId)) {
                     is ServerlessApiClient.ApiResult.Ok -> {
-                        Toast.makeText(this@ServerlessManagerActivity, "已下线客户端 ${client.clientId}", Toast.LENGTH_SHORT).show()
+                        UiNotice.show(this@ServerlessManagerActivity, binding.root, "已下线客户端 ${client.clientId}", false)
                         loadClients()
                     }
                     is ServerlessApiClient.ApiResult.Err ->
-                        Toast.makeText(this@ServerlessManagerActivity, "下线失败：${res.msg}", Toast.LENGTH_SHORT).show()
+                        UiNotice.show(this@ServerlessManagerActivity, binding.root, "下线失败：${res.msg}", false)
                 }
             }
         }
@@ -363,17 +361,17 @@ class ServerlessManagerActivity : AppCompatActivity() {
             setOnClickListener {
                 val topic = topicEdit.text.toString().trim()
                 if (topic.isBlank()) {
-                    Toast.makeText(this@ServerlessManagerActivity, "请输入订阅主题", Toast.LENGTH_SHORT).show()
+                    UiNotice.show(this@ServerlessManagerActivity, binding.root, "请输入订阅主题", false)
                     return@setOnClickListener
                 }
                 lifecycleScope.launch {
                     when (val res = ServerlessApiClient.subscribeClient(baseUrl, auth, clientId, topic, 0)) {
                         is ServerlessApiClient.ApiResult.Ok -> {
-                            Toast.makeText(this@ServerlessManagerActivity, "已订阅 $topic", Toast.LENGTH_SHORT).show()
+                            UiNotice.show(this@ServerlessManagerActivity, binding.root, "已订阅 $topic", false)
                             fetchSubscriptions(baseUrl, auth, clientId, statusView, listHost)
                         }
                         is ServerlessApiClient.ApiResult.Err ->
-                            Toast.makeText(this@ServerlessManagerActivity, "订阅失败：${res.msg}", Toast.LENGTH_SHORT).show()
+                            UiNotice.show(this@ServerlessManagerActivity, binding.root, "订阅失败：${res.msg}", false)
                     }
                 }
             }
@@ -447,7 +445,7 @@ class ServerlessManagerActivity : AppCompatActivity() {
                                             is ServerlessApiClient.ApiResult.Ok ->
                                                 fetchSubscriptions(baseUrl, auth, clientId, statusView, listHost)
                                             is ServerlessApiClient.ApiResult.Err ->
-                                                Toast.makeText(this@ServerlessManagerActivity, "退订失败：${r.msg}", Toast.LENGTH_SHORT).show()
+                                                UiNotice.show(this@ServerlessManagerActivity, binding.root, "退订失败：${r.msg}", false)
                                         }
                                     }
                                 }

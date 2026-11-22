@@ -828,6 +828,8 @@
                 style="@style/SectionBody"
                 android:orientation="vertical">
 
+                <!-- 初始 gone：首帧数据未到前不展示「暂无告警」，避免有告警时先闪一下空态文案
+                     再由 OverviewFragment:400 按实际数据切 VISIBLE/GONE -->
                 <TextView
                     android:id="@+id/tvAlertsEmpty"
                     android:layout_width="match_parent"
@@ -835,7 +837,8 @@
                     android:paddingVertical="4dp"
                     android:text="暂无告警，被控端低电量 / 充电 / 充满等事件将在此记录"
                     android:textColor="@color/md_onSurfaceVariant"
-                    android:textSize="13sp" />
+                    android:textSize="13sp"
+                    android:visibility="gone" />
 
                 <LinearLayout
                     android:id="@+id/layoutAlerts"
