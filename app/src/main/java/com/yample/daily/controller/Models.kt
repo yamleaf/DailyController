@@ -56,7 +56,10 @@ data class TaskItem(
     val name: String = "",      // 任务名称/备注（多任务命名，可区分不同时间点）
     val actualTime: String? = null,
     val status: String = "pending",
-    val statusLabel: String = "待执行"
+    val statusLabel: String = "待执行",
+    // 随机时间窗口展示值（"HH:mm - HH:mm"）。不随快照下发，由控制端按快照 settings 的 rt/tr
+    // 本地计算后 copy 进来，避免改动被控端与 protocol 子模块、也兼容旧版本被控端。
+    val randomWindow: String? = null
 )
 
 data class HistoryItem(

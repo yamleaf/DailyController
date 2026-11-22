@@ -1,5 +1,6 @@
 package com.yample.daily.controller
 
+import android.content.Context
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -10,8 +11,9 @@ import com.google.android.material.timepicker.MaterialTimePicker
 import com.google.android.material.timepicker.TimeFormat
 import com.yample.daily.controller.databinding.DialogTaskBinding
 import com.yample.daily.controller.databinding.FragmentTasksBinding
-import com.yample.daily.controller.widget.TaskChainDecoration
+import com.yample.daily.controller.widget.SwipeRevealLayout
 import com.yample.mqttprotocol.dialog.UnifiedDialogKit
+import java.util.Locale
 
 class TasksFragment : Fragment(), SnapshotFragment {
 
@@ -33,6 +35,7 @@ class TasksFragment : Fragment(), SnapshotFragment {
         if (_binding == null) return
         binding.btnAddTask.isEnabled = enabled
         binding.btnAddTask.alpha = if (enabled) 1f else 0.45f
+        if (::taskAdapter.isInitialized) taskAdapter.setCommandsEnabled(enabled)
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
@@ -42,24 +45,36 @@ class TasksFragment : Fragment(), SnapshotFragment {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        // 提前取 context：弹层显示期间 Fragment 若 detach，点击回调里再 requireContext() 会抛异常
+        val ctx = requireContext()
         taskAdapter = TaskRowAdapter(taskItems,
             onEdit = { item -> if (commandsEnabled) showEditTaskPicker(item) },
             onDelete = { item ->
-                if (!commandsEnabled) return@TaskRowAdapter
-                showDestructiveConfirm(
-                    requireContext(),
-                    title = "删除任务",
-                    message = "确定删除打卡时间点 ${item.time}？",
-                    confirmText = "删除"
-                ) { onDeleteTask?.invoke(item) }
+                if (commandsEnabled) confirmDeleteTask(ctx, item)
+            },
+            onLongMenu = { item ->
+                if (commandsEnabled) {
+                    val title = if (item.name.isBlank()) "任务 ${item.time}" else "任务 ${item.time} · ${item.name}"
+                    // 与设备分组菜单同源，保证弹窗视觉风格统一
+                    UnifiedDialogKit.showMenu(
+                        ctx = ctx,
+                        title = title,
+                        items = listOf("编辑", "删除")
+                    ) { which ->
+                        if (which == 0) showEditTaskPicker(item) else confirmDeleteTask(ctx, item)
+                    }
+                }
             })
-        binding.rvTasks.layoutManager = LinearLayoutManager(requireContext())
+        taskAdapter.openLayoutForPosition = { pos ->
+            _binding?.rvTasks?.findViewHolderForAdapterPosition(pos)?.itemView as? SwipeRevealLayout
+        }
+        binding.rvTasks.layoutManager = LinearLayoutManager(ctx)
         binding.rvTasks.adapter = taskAdapter
-        binding.rvTasks.addItemDecoration(TaskChainDecoration(requireContext()))
         binding.btnAddTask.setOnClickListener { showAddTaskPicker() }
         // 视图可能晚于禁用指令创建（懒加载 tab），创建后立即应用置灰态
         binding.btnAddTask.isEnabled = commandsEnabled
         binding.btnAddTask.alpha = if (commandsEnabled) 1f else 0.45f
+        taskAdapter.setCommandsEnabled(commandsEnabled)
         snapshot?.let { render(it) }
     }
 
@@ -69,11 +84,65 @@ class TasksFragment : Fragment(), SnapshotFragment {
     }
 
     private fun render(s: DeviceSnapshot) {
+        // 快照可能早于 onViewCreated 到达，此时 adapter 尚未初始化；snapshot 已留存，视图创建后会补渲染
+        if (!::taskAdapter.isInitialized) return
         binding.tvTaskCount.text = "${s.tasks.size} 个打卡时间点"
+        // 数据整体替换前先收起展开态，避免 openPosition 指向旧位置
+        taskAdapter.closeAll()
+        val randomEnabled = settingBool(s, "rt", true)
+        val minuteRange = settingInt(s, "tr", DEFAULT_TIME_RANGE)
         taskItems.clear()
-        taskItems.addAll(s.tasks)
+        taskItems.addAll(s.tasks.map {
+            it.copy(randomWindow = resolveRandomWindow(it.time, randomEnabled, minuteRange))
+        })
         taskAdapter.notifyDataSetChanged()
         binding.tvTasksEmpty.visibility = if (taskItems.isEmpty()) View.VISIBLE else View.GONE
+    }
+
+    /**
+     * 随机时间窗口展示值，与被控端 DailyTaskBean.resolveRandomTimeRange 完全对齐：
+     * 最晚执行 = 起始 + (minuteRange-1)*60 + 59 秒，再被当天 23:59:59 截断。
+     *
+     * 数据来源为快照 settings 的 rt（随机时间开关）/ tr（随机范围分钟），与被控端列表同一份配置，
+     * 因此无需被控端下发新字段、无需改 protocol 子模块，也兼容旧版本被控端。
+     * 关闭随机或时间格式异常时返回 null，卡片显示「未启用」/ 占位。
+     */
+    private fun resolveRandomWindow(time: String, enabled: Boolean, minuteRange: Int): String? {
+        if (!enabled) return null
+        val parts = time.trim().split(":")
+        val h = parts.getOrNull(0)?.toIntOrNull()?.coerceIn(0, 23) ?: return null
+        val m = parts.getOrNull(1)?.toIntOrNull()?.coerceIn(0, 59) ?: return null
+        val sec = parts.getOrNull(2)?.toIntOrNull()?.coerceIn(0, 59) ?: 0
+        val start = h * 3600 + m * 60 + sec
+        val range = minuteRange.coerceIn(0, 60)
+        val end = if (range > 0) minOf(start + (range - 1) * 60 + 59, MAX_SECONDS_OF_DAY) else start
+        fun fmt(total: Int) = String.format(Locale.ROOT, "%02d:%02d", total / 3600, (total % 3600) / 60)
+        return "${fmt(start)} - ${fmt(end)}"
+    }
+
+    /** settings 字段可能被远程改值写入不同类型，宽松解析避免 ClassCastException */
+    private fun settingBool(s: DeviceSnapshot, key: String, fallback: Boolean): Boolean =
+        when (val v = s.settings.firstOrNull { it.key == key }?.value) {
+            is Boolean -> v
+            is Number -> v.toInt() != 0
+            is String -> v.equals("true", ignoreCase = true) || v == "1"
+            else -> fallback
+        }
+
+    private fun settingInt(s: DeviceSnapshot, key: String, fallback: Int): Int =
+        when (val v = s.settings.firstOrNull { it.key == key }?.value) {
+            is Number -> v.toInt()
+            is String -> v.toIntOrNull() ?: fallback
+            else -> fallback
+        }
+
+    private fun confirmDeleteTask(ctx: Context, item: TaskItem) {
+        showDestructiveConfirm(
+            ctx,
+            title = "删除任务",
+            message = "确定删除打卡时间点 ${item.time}？",
+            confirmText = "删除"
+        ) { onDeleteTask?.invoke(item) }
     }
 
     private fun showAddTaskPicker() {
@@ -135,5 +204,11 @@ class TasksFragment : Fragment(), SnapshotFragment {
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null
+    }
+
+    companion object {
+        /** 与被控端 Constant.DEFAULT_TIME_RANGE 一致；快照缺 settings 时兜底 */
+        private const val DEFAULT_TIME_RANGE = 5
+        private const val MAX_SECONDS_OF_DAY = 86_399
     }
 }

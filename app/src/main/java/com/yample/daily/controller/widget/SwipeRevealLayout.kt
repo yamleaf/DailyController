@@ -37,6 +37,13 @@ class SwipeRevealLayout @JvmOverloads constructor(
     /** 展开状态变化回调（true=已展开露出按钮） */
     var onStateChange: ((open: Boolean) -> Unit)? = null
 
+    /**
+     * 滑动进度回调：0=完全收起，1=完全展开。
+     * 供调用方实现「按钮逐层弹出 / 内容卡片视差」等自定义效果；
+     * 不设置时行为与原来完全一致，设备列表等既有调用方零影响。
+     */
+    var onScrollProgress: ((Float) -> Unit)? = null
+
     var isOpen: Boolean = false
         private set
 
@@ -54,10 +61,19 @@ class SwipeRevealLayout @JvmOverloads constructor(
         if (isOpen) {
             contentView?.let { it.translationX = -revealWidth() }
         }
+        updateProgress()
     }
 
     /** 最大可滑出距离 = 操作面板宽度 */
     private fun revealWidth(): Float = (actionPanel?.width ?: 0).toFloat()
+
+    /** 把当前位移换算成 0~1 进度；只在设置了回调时工作，其他列表无感 */
+    private fun updateProgress() {
+        val max = revealWidth()
+        if (max <= 0f) return
+        val p = (-(contentView?.translationX ?: 0f) / max).coerceIn(0f, 1f)
+        onScrollProgress?.invoke(p)
+    }
 
     override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
         val cv = contentView ?: return super.onInterceptTouchEvent(ev)
@@ -101,6 +117,7 @@ class SwipeRevealLayout @JvmOverloads constructor(
                 val max = revealWidth()
                 val target = (startContentX + rawDx).coerceIn(-max, 0f)
                 cv.translationX = target
+                updateProgress()
                 return true
             }
 
@@ -123,6 +140,7 @@ class SwipeRevealLayout @JvmOverloads constructor(
         val max = revealWidth()
         if (animate) animateTo(-max) else {
             contentView?.translationX = -max
+            updateProgress()
             setOpenState(true)
         }
     }
@@ -131,6 +149,7 @@ class SwipeRevealLayout @JvmOverloads constructor(
     fun close(animate: Boolean = true) {
         if (animate) animateTo(0f) else {
             contentView?.translationX = 0f
+            updateProgress()
             setOpenState(false)
         }
     }
@@ -141,7 +160,11 @@ class SwipeRevealLayout @JvmOverloads constructor(
                 .translationX(targetX)
                 .setDuration(180)
                 .setInterpolator(DecelerateInterpolator())
-                .withEndAction { setOpenState(targetX < 0f) }
+                .setUpdateListener { _ -> updateProgress() }
+                .withEndAction {
+                    updateProgress()
+                    setOpenState(targetX < 0f)
+                }
                 .start()
         }
     }
@@ -152,9 +175,10 @@ class SwipeRevealLayout @JvmOverloads constructor(
         if (changed) onStateChange?.invoke(open)
     }
 
-    /** 回收视图时复位，防止复用导致残留位移 */
+    /** 回收视图时复位，防止复用导致残留位移 / 残留堆叠动画 */
     fun reset() {
         contentView?.translationX = 0f
         isOpen = false
+        updateProgress()
     }
 }

@@ -62,51 +62,40 @@
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
-        <com.google.android.material.card.MaterialCardView
+        <!-- 任务区：每个任务各自成一张卡片，外层不再套大卡片（避免卡片嵌套） -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            app:cardBackgroundColor="@color/md_surface"
-            app:cardCornerRadius="20dp"
-            app:cardElevation="0dp"
-            app:strokeColor="@color/md_outlineVariant"
-            app:strokeWidth="1dp">
+            android:layout_marginTop="@dimen/dp_10"
+            android:orientation="vertical">
 
-            <LinearLayout
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rvTasks"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:paddingTop="6dp">
+                android:nestedScrollingEnabled="false" />
 
-                <androidx.recyclerview.widget.RecyclerView
-                    android:id="@+id/rvTasks"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:nestedScrollingEnabled="false" />
+            <TextView
+                android:id="@+id/tvTasksEmpty"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:padding="@dimen/dp_20"
+                android:text="暂无任务，点击上方 + 添加"
+                android:textColor="@color/md_onSurfaceVariant"
+                android:textSize="@dimen/sp_13"
+                android:visibility="gone" />
 
-                <TextView
-                    android:id="@+id/tvTasksEmpty"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center"
-                    android:padding="18dp"
-                    android:text="暂无任务，点击上方 + 添加"
-                    android:textColor="@color/md_onSurfaceVariant"
-                    android:textSize="13sp"
-                    android:visibility="gone" />
-
-            </LinearLayout>
-
-        </com.google.android.material.card.MaterialCardView>
+        </LinearLayout>
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:paddingHorizontal="4dp"
-            android:text="提示：实际执行时间 = 计划时间 ± 随机范围；删除任务会立即同步到被控端。"
+            android:layout_marginTop="@dimen/dp_12"
+            android:paddingHorizontal="@dimen/dp_4"
+            android:text="提示：随机窗口由被控端「随机时间 / 随机范围」设置计算；左滑或长按任务卡片可编辑、删除。"
             android:textColor="@color/md_onSurfaceVariant"
-            android:textSize="12sp" />
+            android:textSize="@dimen/sp_12" />
 
     </LinearLayout>
 
