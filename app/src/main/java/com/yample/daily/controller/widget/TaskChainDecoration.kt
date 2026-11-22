@@ -21,7 +21,10 @@ import com.yample.daily.controller.R
  *   不能用 invalidateItemDecorations()——它在 RecyclerView 1.4.0 内部调 requestLayout()，
  *   在本列表位于 NestedScrollView + wrap_content 的场景下会每帧重测所有 item，造成布局风暴、动画卡死。
  * - 省电：每帧只是重绘，不起新线程/不轮询；且息屏时显式 pause 动画，亮屏重绘时 resume。
- *   节点中心 x = 12dp(paddingStart) + 40dp/2 = 32dp；中心 y = 行垂直中心。
+ *
+ * 卡片化适配（2026-11-22）：任务行已改成「一任务一卡片」，旧的 40dp 轨道列 / 34dp 圆点已移除。
+ * 现在节点改为画在卡片左内侧的 padding 区（x = child.left + 12dp，卡片内容从 16dp 起，不压文字）；
+ * 灰线仍画在 item 下层，只在卡片间 12dp 间隙可见；光点 / 节点画在上层，贯穿卡片连续可见。
  * */
 class TaskChainDecoration(context: Context) : RecyclerView.ItemDecoration() {
 
@@ -35,8 +38,8 @@ class TaskChainDecoration(context: Context) : RecyclerView.ItemDecoration() {
     /** 光点能量色：亮青蓝（接近参考 HTML 的荧光青蓝，浅色轨道上也醒目） */
     private val pulseColor = Color.parseColor("#40C4FF")
 
-    /** 轨道列中心 x（12dp paddingStart + 40dp 轨道半宽） */
-    private val trackCenterX = 32f * density
+    /** 卡片左内侧 padding 区的轨道中心 x（内容从 16dp 起，12dp 处不压文字） */
+    private val trackCenterX = 12f * density
 
     private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
@@ -116,7 +119,7 @@ class TaskChainDecoration(context: Context) : RecyclerView.ItemDecoration() {
         val count = parent.childCount
         if (count < 2) return
 
-        // 画连线
+        // 只画连线：灰线画在子 View 之下，卡片不透明 → 只在卡片间隙可见（像卡片之间的连接线）
         for (i in 0 until count - 1) {
             val child = parent.getChildAt(i)
             val next = parent.getChildAt(i + 1)
@@ -130,12 +133,12 @@ class TaskChainDecoration(context: Context) : RecyclerView.ItemDecoration() {
             val endY = next.top + next.height / 2f
             canvas.drawLine(x, startY, x, endY, linePaint)
         }
-
-        drawFlowPulse(canvas, parent)
     }
 
     private fun drawFlowPulse(canvas: Canvas, parent: RecyclerView) {
         val count = parent.childCount
+        // 先复位：本次算不出光点时，节点泛光不应沿用上一帧的旧位置
+        pulseY = Float.MIN_VALUE
         if (count < 2) return
 
         val segments = ArrayList<FloatArray>(count - 1)
@@ -193,13 +196,24 @@ class TaskChainDecoration(context: Context) : RecyclerView.ItemDecoration() {
     }
 
     /**
-     * 节点点亮画在 item 之上（onDraw 在子 view 之前绘制，光环会被 34dp 的时钟节点圆底盖住）。
+     * 光点 / 彗尾 / 节点泛光全部画在 item 之上。
+     *
+     * 卡片化后卡片是不透明白底、且横向撑满整行，画在 onDraw（子 View 之下）会被卡片完全盖住，
+     * 只在卡片间隙闪一下，凑不成「流水」；所以这里必须叠加在卡片上层。
+     * 落点 x = 卡片左内侧 12dp，卡片内容从 16dp 起，不压文字。
      * */
     override fun onDrawOver(canvas: Canvas, parent: RecyclerView, state: RecyclerView.State) {
-        if (pulseY == Float.MIN_VALUE || parent.childCount == 0) return
+        if (parent.childCount == 0) return
+        drawFlowPulse(canvas, parent)
+        drawNodeGlow(canvas, parent)
+    }
+
+    /** 节点被光点「经过」时泛青光：小尺寸光晕，不再有旧版 34dp 时钟圆底 */
+    private fun drawNodeGlow(canvas: Canvas, parent: RecyclerView) {
+        if (pulseY == Float.MIN_VALUE) return
 
         val x = parent.getChildAt(0).left + trackCenterX
-        val glowRange = 46f * density
+        val glowRange = 32f * density
         for (i in 0 until parent.childCount) {
             val child = parent.getChildAt(i)
             val nodeY = child.top + child.height / 2f
@@ -207,13 +221,13 @@ class TaskChainDecoration(context: Context) : RecyclerView.ItemDecoration() {
             if (dist >= glowRange) continue
 
             val intensity = 1f - dist / glowRange
-            // 34dp 时钟节点整颗泛青光（图标仍可辨识），外面两层淡青柔光，去掉硬边圆环
+            // 小光点：两层淡青柔光 + 青色实心，尺寸克制不压卡片内容
             nodeHaloPaint.alpha = (intensity * 0x18).toInt().coerceIn(0, 255)
-            canvas.drawCircle(x, nodeY, 25f * density, nodeHaloPaint)
-            nodeHaloPaint.alpha = (intensity * 0x2C).toInt().coerceIn(0, 255)
-            canvas.drawCircle(x, nodeY, 20f * density, nodeHaloPaint)
-            nodeFillPaint.alpha = (intensity * 0x50).toInt().coerceIn(0, 255)
-            canvas.drawCircle(x, nodeY, 17f * density, nodeFillPaint)
+            canvas.drawCircle(x, nodeY, 9f * density, nodeHaloPaint)
+            nodeHaloPaint.alpha = (intensity * 0x30).toInt().coerceIn(0, 255)
+            canvas.drawCircle(x, nodeY, 6f * density, nodeHaloPaint)
+            nodeFillPaint.alpha = (intensity * 0x60).toInt().coerceIn(0, 255)
+            canvas.drawCircle(x, nodeY, 3.5f * density, nodeFillPaint)
         }
     }
 }

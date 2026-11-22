@@ -6,6 +6,7 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.RecyclerView
+import com.yample.daily.controller.databinding.ItemDeviceBinding
 import com.yample.daily.controller.widget.SwipeRevealLayout
 
 /**
@@ -137,6 +138,10 @@ class DeviceAdapter(
             closeAll()
             onDelete(device)
         }
+        // 四卡阶梯式层叠左滑（与任务卡片同一套效果；进度回调驱动，不设则走原行为）
+        val density = holder.itemView.resources.displayMetrics.density
+        binding.swipeRevealLayout.onScrollProgress = { p -> applyStackedActions(binding, p, density) }
+
         // 展开互斥：本 item 展开时收起其他已展开的 item
         // 回调里用 holder.bindingAdapterPosition 取实时位置（列表变更后 onBindViewHolder 形参 position 可能过期）
         binding.swipeRevealLayout.onStateChange = { open ->
@@ -159,6 +164,44 @@ class DeviceAdapter(
         binding.swipeRevealLayout.reset()
     }
 
+    /**
+     * 四卡阶梯式层叠左滑（与任务卡片同一套效果，纯 View 属性动画，R8 下零风险）：
+     * 内容卡片轻微下沉 + 缩小；删除→编辑→分组→置顶依次抽出，
+     * 各卡水平错开 40dp、垂直递减、旋转角递增，像一叠斜放的卡片。
+     */
+    private fun applyStackedActions(b: ItemDeviceBinding, p: Float, density: Float) {
+        // 内容卡片：下沉 4dp、缩小到 0.985、阴影 0→2dp（幅度克制）
+        b.card.translationY = STACK_CARD_DROP * density * p
+        val cardScale = 1f - STACK_CARD_SHRINK * p
+        b.card.scaleX = cardScale
+        b.card.scaleY = cardScale
+        b.card.cardElevation = STACK_CARD_ELEV * density * p
+
+        // 四卡依次抽出，每卡占 0.25 进度窗口
+        applyCard(b.btnActionDelete, cardT(p, 0), density, x = 0f, y = 9f, rot = 5f)
+        applyCard(b.btnActionEdit, cardT(p, 1), density, x = -40f, y = 3f, rot = 2f)
+        applyCard(b.btnActionGroup, cardT(p, 2), density, x = -80f, y = -3f, rot = -2f)
+        applyCard(b.btnActionPin, cardT(p, 3), density, x = -120f, y = -9f, rot = -5f)
+    }
+
+    /** 第 index 张卡的抽出进度：每张错开 0.18 进度、持续 0.46 */
+    private fun cardT(p: Float, index: Int): Float {
+        val start = index * 0.18f
+        val t = ((p - start) / 0.46f).coerceIn(0f, 1f)
+        return 1f - (1f - t) * (1f - t) * (1f - t) // easeOut
+    }
+
+    /** 单卡从重合态抽出到错位态（alpha / scale / 位移 / 旋转） */
+    private fun applyCard(view: View, t: Float, density: Float, x: Float, y: Float, rot: Float) {
+        view.alpha = t
+        val scale = 0.6f + 0.4f * t
+        view.scaleX = scale
+        view.scaleY = scale
+        view.translationX = x * density * t
+        view.translationY = y * density * t
+        view.rotation = rot * t
+    }
+
     /** 供外部收起所有已展开的操作面板 */
     fun closeAll() {
         if (openPosition == RecyclerView.NO_POSITION) return
@@ -172,5 +215,12 @@ class DeviceAdapter(
         onlineStates[deviceId] = online
         val pos = items.indexOfFirst { it.deviceId == deviceId }
         if (pos >= 0) notifyItemChanged(pos)
+    }
+
+    companion object {
+        // 内容卡片层叠幅度（单位 dp，运行时乘 density）
+        private const val STACK_CARD_DROP = 4f
+        private const val STACK_CARD_SHRINK = 0.015f
+        private const val STACK_CARD_ELEV = 2f
     }
 }

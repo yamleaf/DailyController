@@ -3,74 +3,90 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/swipeRevealLayout"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content">
+    android:layout_height="wrap_content"
+    android:clipChildren="false"
+    android:clipToPadding="false">
 
-    <!-- 底部操作面板：左滑露出。QQ 聊天列表式：置顶(灰) / 分组(次要色) / 编辑(主色) / 删除(红) 色块撑满整行高度 -->
-    <LinearLayout
+    <!--
+      左滑操作面板：四张小卡片阶梯式错位层叠（与任务卡片同一套效果）。
+      四枚按钮 ID / 文案全部保留，DeviceAdapter 的置顶文案切换无需改动。
+      每卡 56×72dp、垂直居中；水平间距由代码 translationX 驱动。
+      面板总宽 176dp = 内容层最大左移距离 = 置顶卡错位量 120dp + 卡宽 56dp；
+      取 176 而非更小值，才能让最外侧的置顶卡完整落在面板内、不被内容卡片压住。
+    -->
+    <FrameLayout
         android:id="@+id/actionPanel"
-        android:layout_width="wrap_content"
+        android:layout_width="176dp"
         android:layout_height="match_parent"
         android:layout_gravity="end"
         android:layout_marginEnd="@dimen/dp_16"
-        android:layout_marginVertical="6dp"
-        android:orientation="horizontal">
+        android:clipChildren="false">
 
-        <!-- 置顶 / 取消置顶：灰色色块（宽度按「取消置顶」四字留够，避免挤压截断） -->
+        <!-- 置顶（最内层，最后抽出）：灰色卡 -->
         <TextView
             android:id="@+id/btnActionPin"
-            android:layout_width="80dp"
-            android:layout_height="match_parent"
-            android:background="@drawable/bg_action_pin"
+            android:layout_width="56dp"
+            android:layout_height="72dp"
+            android:layout_gravity="center_vertical|end"
+            android:elevation="1dp"
+            android:background="@drawable/bg_action_pin_round"
             android:foreground="?attr/selectableItemBackground"
             android:gravity="center"
-            android:paddingHorizontal="@dimen/dp_6"
+            android:paddingHorizontal="@dimen/dp_2"
             android:text="@string/action_pin"
             android:textColor="@android:color/white"
-            android:textSize="@dimen/sp_13"
+            android:textSize="@dimen/sp_11"
             android:textStyle="bold" />
 
-        <!-- 分组：次要色实底 -->
+        <!-- 分组：次要色卡 -->
         <TextView
             android:id="@+id/btnActionGroup"
-            android:layout_width="48dp"
-            android:layout_height="match_parent"
-            android:background="@drawable/bg_action_group"
+            android:layout_width="56dp"
+            android:layout_height="72dp"
+            android:layout_gravity="center_vertical|end"
+            android:elevation="1dp"
+            android:background="@drawable/bg_action_group_round"
             android:foreground="?attr/selectableItemBackground"
             android:gravity="center"
-            android:paddingHorizontal="@dimen/dp_6"
+            android:paddingHorizontal="@dimen/dp_2"
             android:text="@string/action_group"
             android:textColor="@android:color/white"
-            android:textSize="@dimen/sp_13"
+            android:textSize="@dimen/sp_11"
             android:textStyle="bold" />
 
-        <!-- 编辑（中）：主色色块 -->
+        <!-- 编辑：主色卡 -->
         <TextView
             android:id="@+id/btnActionEdit"
             android:layout_width="56dp"
-            android:layout_height="match_parent"
-            android:background="@drawable/bg_action_edit"
+            android:layout_height="72dp"
+            android:layout_gravity="center_vertical|end"
+            android:elevation="2dp"
+            android:background="@drawable/bg_action_edit_round"
             android:foreground="?attr/selectableItemBackground"
             android:gravity="center"
-            android:paddingHorizontal="@dimen/dp_6"
+            android:paddingHorizontal="@dimen/dp_2"
             android:text="@string/action_edit"
             android:textColor="@android:color/white"
-            android:textSize="@dimen/sp_13"
+            android:textSize="@dimen/sp_11"
             android:textStyle="bold" />
 
-        <!-- 删除（右）：红色色块，右端圆角与卡片呼应 -->
+        <!-- 删除（最外层，先抽出）：红色卡 -->
         <TextView
             android:id="@+id/btnActionDelete"
             android:layout_width="56dp"
-            android:layout_height="match_parent"
-            android:background="@drawable/bg_action_delete"
+            android:layout_height="72dp"
+            android:layout_gravity="center_vertical|end"
+            android:elevation="3dp"
+            android:background="@drawable/bg_action_delete_round"
             android:foreground="?attr/selectableItemBackground"
             android:gravity="center"
-            android:paddingHorizontal="@dimen/dp_6"
+            android:paddingHorizontal="@dimen/dp_2"
             android:text="@string/action_delete"
             android:textColor="@android:color/white"
-            android:textSize="@dimen/sp_13"
+            android:textSize="@dimen/sp_11"
             android:textStyle="bold" />
-    </LinearLayout>
+
+    </FrameLayout>
 
     <!-- 内容层：设备信息卡片 -->
     <com.google.android.material.card.MaterialCardView

@@ -1,17 +1,25 @@
 package com.yample.daily.controller
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
+import android.os.Build
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Toast
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.timepicker.MaterialTimePicker
 import com.google.android.material.timepicker.TimeFormat
 import com.yample.daily.controller.databinding.DialogTaskBinding
 import com.yample.daily.controller.databinding.FragmentTasksBinding
+import com.yample.daily.controller.databinding.SheetTaskActionsBinding
 import com.yample.daily.controller.widget.SwipeRevealLayout
+import com.yample.daily.controller.widget.TaskChainDecoration
 import com.yample.mqttprotocol.dialog.UnifiedDialogKit
 import java.util.Locale
 
@@ -52,24 +60,14 @@ class TasksFragment : Fragment(), SnapshotFragment {
             onDelete = { item ->
                 if (commandsEnabled) confirmDeleteTask(ctx, item)
             },
-            onLongMenu = { item ->
-                if (commandsEnabled) {
-                    val title = if (item.name.isBlank()) "任务 ${item.time}" else "任务 ${item.time} · ${item.name}"
-                    // 与设备分组菜单同源，保证弹窗视觉风格统一
-                    UnifiedDialogKit.showMenu(
-                        ctx = ctx,
-                        title = title,
-                        items = listOf("编辑", "删除")
-                    ) { which ->
-                        if (which == 0) showEditTaskPicker(item) else confirmDeleteTask(ctx, item)
-                    }
-                }
-            })
+            onLongMenu = { item -> if (commandsEnabled) showTaskActions(ctx, item) })
         taskAdapter.openLayoutForPosition = { pos ->
             _binding?.rvTasks?.findViewHolderForAdapterPosition(pos)?.itemView as? SwipeRevealLayout
         }
         binding.rvTasks.layoutManager = LinearLayoutManager(ctx)
         binding.rvTasks.adapter = taskAdapter
+        // 链式时间轴：卡片间灰线 + 卡片左内侧流动彗星光点（已适配卡片化布局）
+        binding.rvTasks.addItemDecoration(TaskChainDecoration(ctx))
         binding.btnAddTask.setOnClickListener { showAddTaskPicker() }
         // 视图可能晚于禁用指令创建（懒加载 tab），创建后立即应用置灰态
         binding.btnAddTask.isEnabled = commandsEnabled
@@ -135,6 +133,53 @@ class TasksFragment : Fragment(), SnapshotFragment {
             is String -> v.toIntOrNull() ?: fallback
             else -> fallback
         }
+
+    /**
+     * 任务卡片长按弹层：上半部分是「任务详情」只读区，下半部分才是操作。
+     *
+     * 与左滑的职责分工：左滑 = 快捷操作（明确知道要做什么，一步到位）；
+     * 长按 = 先看全信息再决定操作，并额外提供「复制打卡时间」这类左滑没有的能力。
+     * 用捕获的 ctx，避免弹层显示期间 Fragment detach 后 requireContext() 抛异常。
+     */
+    private fun showTaskActions(ctx: Context, item: TaskItem) {
+        val sheetBinding = SheetTaskActionsBinding.inflate(layoutInflater)
+
+        // 标题右侧状态胶囊：与卡片同一套配色
+        sheetBinding.tvActionStatus.text = item.statusLabel
+        val (textColor, bg) = TaskRowAdapter.statusStyle(item.status)
+        sheetBinding.tvActionStatus.setTextColor(ContextCompat.getColor(ctx, textColor))
+        sheetBinding.tvActionStatus.background?.mutate()?.setTint(ContextCompat.getColor(ctx, bg))
+
+        // 详情只读区：卡片上被省略/压缩的信息在这里完整呈现
+        sheetBinding.tvDetailTime.text = item.time
+        sheetBinding.tvDetailRandomWindow.text = item.randomWindow ?: "未启用"
+        sheetBinding.tvDetailActual.text = item.actualTime?.takeIf { it.isNotBlank() } ?: "--:--:--"
+        sheetBinding.tvDetailName.text = item.name.takeIf { it.isNotBlank() } ?: "无备注"
+
+        val sheet = BottomSheetDialog(ctx)
+        sheet.setContentView(sheetBinding.root)
+
+        // 复制打卡时间：左滑面板没有的能力，让长按有独立价值
+        sheetBinding.btnCopyTime.setOnClickListener {
+            val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+            cm?.setPrimaryClip(ClipData.newPlainText("打卡时间", item.time))
+            // Android 13+ 系统自带剪贴板浮层提示，不再重复弹 Toast
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+                Toast.makeText(ctx, "已复制打卡时间 ${item.time}", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        sheetBinding.cardActionEdit.setOnClickListener {
+            sheet.dismiss()
+            showEditTaskPicker(item)
+        }
+        sheetBinding.cardActionDelete.setOnClickListener {
+            sheet.dismiss()
+            confirmDeleteTask(ctx, item)
+        }
+        sheetBinding.btnActionCancel.setOnClickListener { sheet.dismiss() }
+        sheet.show()
+    }
 
     private fun confirmDeleteTask(ctx: Context, item: TaskItem) {
         showDestructiveConfirm(

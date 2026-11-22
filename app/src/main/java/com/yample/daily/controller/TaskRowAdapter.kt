@@ -120,7 +120,7 @@ class TaskRowAdapter(
     private fun applyStackEffect(b: com.yample.daily.controller.databinding.ItemTaskRowBinding, p: Float, density: Float) {
         val actionAlpha = if (commandsEnabled) 1f else 0.45f
 
-        // 内容卡片被掀开：下沉 0→8dp、缩小 1→0.955、阴影 0→4dp
+        // 内容卡片被掀开：只下沉 4dp、缩小到 0.985、阴影 0→2dp（幅度克制，不再"冒出"整行）
         b.card.translationY = STACK_CARD_DROP * density * p
         val cardScale = 1f - STACK_CARD_SHRINK * p
         b.card.scaleX = cardScale
@@ -130,9 +130,10 @@ class TaskRowAdapter(
         // 底层删除卡 0→0.55 抽出；上层编辑卡 0.22→1 抽出（错位有先后）
         val deleteT = easeOut((p / 0.55f).coerceIn(0f, 1f))
         val editT = easeOut(((p - 0.22f) / 0.78f).coerceIn(0f, 1f))
-        // 收起时两卡重合在面板右缘（translation 为 0）；展开时分别落到各自错位位置
+        // 收起时两卡重合在面板右缘；展开时分别落到错位位置。
+        // 水平错开 66dp、卡宽 72dp → 仅重叠 6dp，两枚文字均完整可见且各自可点。
         applyStackedCard(b.btnActionDelete, deleteT, actionAlpha, density,
-            targetX = 0f, targetY = STACK_DELETE_DROP_Y, targetRot = STACK_DELETE_ROT, targetScale = 0.94f)
+            targetX = 0f, targetY = STACK_DELETE_DROP_Y, targetRot = STACK_DELETE_ROT, targetScale = 1f)
         applyStackedCard(b.btnActionEdit, editT, actionAlpha, density,
             targetX = -STACK_EDIT_SHIFT_X, targetY = -STACK_EDIT_RISE_Y, targetRot = -STACK_EDIT_ROT, targetScale = 1f)
     }
@@ -179,29 +180,29 @@ class TaskRowAdapter(
         openLayoutForPosition?.invoke(pos)?.close()
     }
 
-    /** 状态胶囊：文字色 + 背景色（与原任务行状态配色一致） */
-    private fun statusStyle(status: String): Pair<Int, Int> = when (status) {
-        "success" -> R.color.md_tertiary to R.color.md_tertiaryContainer
-        "timeout" -> R.color.md_warning to R.color.md_warningContainer
-        "pending" -> R.color.md_primary to R.color.md_primaryContainer
-        "skip" -> R.color.md_onSurfaceVariant to R.color.md_skipContainer
-        "expired" -> R.color.md_onSurfaceVariant to R.color.md_surfaceVariant
-        else -> R.color.md_onSurfaceVariant to R.color.md_surfaceVariant
-    }
-
     override fun getItemCount() = items.size
 
     companion object {
+        /** 状态胶囊：文字色 + 背景色（与原任务行状态配色一致）。长按详情弹层复用同一套配色。 */
+        fun statusStyle(status: String): Pair<Int, Int> = when (status) {
+            "success" -> R.color.md_tertiary to R.color.md_tertiaryContainer
+            "timeout" -> R.color.md_warning to R.color.md_warningContainer
+            "pending" -> R.color.md_primary to R.color.md_primaryContainer
+            "skip" -> R.color.md_onSurfaceVariant to R.color.md_skipContainer
+            "expired" -> R.color.md_onSurfaceVariant to R.color.md_surfaceVariant
+            else -> R.color.md_onSurfaceVariant to R.color.md_surfaceVariant
+        }
+
         // 堆叠效果幅度（单位 dp，运行时乘 density）
-        private const val STACK_CARD_DROP = 8f
-        private const val STACK_CARD_SHRINK = 0.045f
-        private const val STACK_CARD_ELEV = 4f
+        private const val STACK_CARD_DROP = 4f
+        private const val STACK_CARD_SHRINK = 0.015f
+        private const val STACK_CARD_ELEV = 2f
         // 删除卡：右侧、下沉、顺时针
-        private const val STACK_DELETE_DROP_Y = 10f
-        private const val STACK_DELETE_ROT = 6f
-        // 编辑卡：左侧错位、上浮、逆时针
-        private const val STACK_EDIT_SHIFT_X = 58f
-        private const val STACK_EDIT_RISE_Y = 8f
-        private const val STACK_EDIT_ROT = -5f
+        private const val STACK_DELETE_DROP_Y = 9f
+        private const val STACK_DELETE_ROT = 5f
+        // 编辑卡：左侧错位、上浮、逆时针（中心距删除卡 66dp，卡宽 72dp → 仅重叠 6dp）
+        private const val STACK_EDIT_SHIFT_X = 66f
+        private const val STACK_EDIT_RISE_Y = 7f
+        private const val STACK_EDIT_ROT = -4f
     }
 }
