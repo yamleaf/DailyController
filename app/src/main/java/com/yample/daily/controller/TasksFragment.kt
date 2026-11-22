@@ -31,6 +31,9 @@ class TasksFragment : Fragment(), SnapshotFragment {
     private val taskItems = mutableListOf<TaskItem>()
     private lateinit var taskAdapter: TaskRowAdapter
 
+    /** 链式彗星动画装饰器；需在视图销毁时 release，否则无限动画会一直跑并持有 RecyclerView */
+    private var chainDecoration: TaskChainDecoration? = null
+
     var onAddTask: ((String, String) -> Unit)? = null
     var onEditTask: ((TaskItem, String, String) -> Unit)? = null
     var onDeleteTask: ((TaskItem) -> Unit)? = null
@@ -67,7 +70,7 @@ class TasksFragment : Fragment(), SnapshotFragment {
         binding.rvTasks.layoutManager = LinearLayoutManager(ctx)
         binding.rvTasks.adapter = taskAdapter
         // 链式时间轴：卡片间灰线 + 卡片左内侧流动彗星光点（已适配卡片化布局）
-        binding.rvTasks.addItemDecoration(TaskChainDecoration(ctx))
+        chainDecoration = TaskChainDecoration(ctx).also { binding.rvTasks.addItemDecoration(it) }
         binding.btnAddTask.setOnClickListener { showAddTaskPicker() }
         // 视图可能晚于禁用指令创建（懒加载 tab），创建后立即应用置灰态
         binding.btnAddTask.isEnabled = commandsEnabled
@@ -246,7 +249,22 @@ class TasksFragment : Fragment(), SnapshotFragment {
         )
     }
 
+    /**
+     * tab 切换（hide/show）时暂停/恢复链式脉冲动画。
+     *
+     * hide 后 RecyclerView 已是 GONE、不再重绘，但无限 ValueAnimator 仍会每帧
+     * 调 postInvalidateOnAnimation，属于纯空转；这里显式暂停，切回时再恢复。
+     * 首次显示（尚未创建动画）时 resume 是空操作，动画由 onDraw 自行 start。
+     */
+    override fun onHiddenChanged(hidden: Boolean) {
+        super.onHiddenChanged(hidden)
+        if (hidden) chainDecoration?.pause() else chainDecoration?.resume()
+    }
+
     override fun onDestroyView() {
+        // 必须 release：装饰器里的循环动画否则会一直跑，并通过 host 持有 RecyclerView / 整套视图
+        chainDecoration?.release()
+        chainDecoration = null
         super.onDestroyView()
         _binding = null
     }

@@ -20,7 +20,9 @@ import com.yample.daily.controller.R
  * - 驱动：ValueAnimator 每帧用 [RecyclerView.postInvalidateOnAnimation] 触发「仅重绘」。
  *   不能用 invalidateItemDecorations()——它在 RecyclerView 1.4.0 内部调 requestLayout()，
  *   在本列表位于 NestedScrollView + wrap_content 的场景下会每帧重测所有 item，造成布局风暴、动画卡死。
- * - 省电：每帧只是重绘，不起新线程/不轮询；且息屏时显式 pause 动画，亮屏重绘时 resume。
+ * - 省电：每帧只是重绘，不起新线程/不轮询。三层暂停策略——
+ *   息屏时动画自行 pause（亮屏由 onDraw resume）；切走 tab 由 [pause] 显式暂停（[resume] 恢复）；
+ *   视图销毁由 [release] 取消动画并断开 host 引用，避免无限动画泄漏 RecyclerView。
  *
  * 卡片化适配（2026-11-22）：任务行已改成「一任务一卡片」，旧的 40dp 轨道列 / 34dp 圆点已移除。
  * 现在节点改为画在卡片左内侧的 padding 区（x = child.left + 12dp，卡片内容从 16dp 起，不压文字）；
@@ -92,6 +94,12 @@ class TaskChainDecoration(context: Context) : RecyclerView.ItemDecoration() {
     /** 当前光点 y 坐标，供 onDrawOver 判断哪些节点被「经过」 */
     private var pulseY = Float.MIN_VALUE
 
+    /** 当前是否处于「可见且应动画」状态；切走 tab 置 false，阻止 onDraw 重新拉起动画 */
+    private var active = true
+
+    /** 是否已释放；视图销毁后为 true，此后任何绘制都直接返回，不再重启动画 */
+    private var released = false
+
     private val flowAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
         duration = 3600
         repeatCount = ValueAnimator.INFINITE
@@ -107,12 +115,47 @@ class TaskChainDecoration(context: Context) : RecyclerView.ItemDecoration() {
         }
     }
 
+    /**
+     * 页面切走（hide）时暂停循环动画。
+     *
+     * 只为省电：hide 后 RecyclerView 已经是 GONE、不再重绘，但无限 ValueAnimator 仍会每帧
+     * 调 [RecyclerView.postInvalidateOnAnimation]，属于纯空转。pause 后由 [resume] 显式恢复，
+     * 不依赖 onDraw 自动 resume —— 因为淡入淡出过渡期间隐藏视图仍可能被绘制一两帧，自动 resume 会把它又拉起来。
+     */
+    fun pause() {
+        active = false
+        if (flowAnimator.isStarted && !flowAnimator.isPaused) flowAnimator.pause()
+    }
+
+    /** 页面切回（show）时恢复循环动画 */
+    fun resume() {
+        if (released) return
+        active = true
+        if (flowAnimator.isStarted && flowAnimator.isPaused) flowAnimator.resume()
+    }
+
+    /**
+     * 视图销毁时调用：彻底停掉无限循环动画并断开对 RecyclerView 的引用。
+     *
+     * 不做这一步的话，动画会一直跑下去（并持有 host → 连带 RecyclerView 与整个 Fragment 视图无法回收）。
+     * 本装饰器由 TasksFragment 持有引用，在 onDestroyView 里调用。
+     */
+    fun release() {
+        released = true
+        active = false
+        if (flowAnimator.isStarted) flowAnimator.cancel()
+        // 断开 update listener，避免残留的 lambda 继续持有 host / paints
+        flowAnimator.removeAllUpdateListeners()
+        host = null
+    }
+
     override fun onDraw(canvas: Canvas, parent: RecyclerView, state: RecyclerView.State) {
+        if (released) return
         if (host !== parent) host = parent
-        if (powerManager?.isInteractive != false && flowAnimator.isPaused) {
+        if (active && powerManager?.isInteractive != false && flowAnimator.isPaused) {
             flowAnimator.resume()
         }
-        if (!flowAnimator.isStarted) {
+        if (active && !flowAnimator.isStarted) {
             flowAnimator.start()
         }
 
@@ -203,7 +246,7 @@ class TaskChainDecoration(context: Context) : RecyclerView.ItemDecoration() {
      * 落点 x = 卡片左内侧 12dp，卡片内容从 16dp 起，不压文字。
      * */
     override fun onDrawOver(canvas: Canvas, parent: RecyclerView, state: RecyclerView.State) {
-        if (parent.childCount == 0) return
+        if (released || parent.childCount == 0) return
         drawFlowPulse(canvas, parent)
         drawNodeGlow(canvas, parent)
     }
