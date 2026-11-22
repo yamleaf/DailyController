@@ -71,15 +71,13 @@ class TaskChainDecoration(context: Context) : RecyclerView.ItemDecoration() {
         color = pulseColor
     }
 
-    /** 节点点亮联动：画在 onDrawOver（item 之上），光点靠近节点时整颗节点泛青光 + 外圈亮环 */
-    private val nodeRingPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        strokeWidth = 1.6f * density
+    /** 节点点亮联动：整颗节点泛青光 + 外面两层柔光，无硬边圆环 */
+    private val nodeFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
         color = pulseColor
     }
 
-    /** DC 节点是 34dp 的时钟图标容器，用半透明填充盖在整颗节点上，图标本身也会一起被点亮 */
-    private val nodeFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    private val nodeHaloPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
         color = pulseColor
     }
@@ -209,12 +207,13 @@ class TaskChainDecoration(context: Context) : RecyclerView.ItemDecoration() {
             if (dist >= glowRange) continue
 
             val intensity = 1f - dist / glowRange
-            // 整颗 34dp 节点泛青光（时钟图标也跟着亮），低透明度不遮挡图标
-            nodeFillPaint.alpha = (intensity * 0x48).toInt().coerceIn(0, 255)
+            // 34dp 时钟节点整颗泛青光（图标仍可辨识），外面两层淡青柔光，去掉硬边圆环
+            nodeHaloPaint.alpha = (intensity * 0x18).toInt().coerceIn(0, 255)
+            canvas.drawCircle(x, nodeY, 25f * density, nodeHaloPaint)
+            nodeHaloPaint.alpha = (intensity * 0x2C).toInt().coerceIn(0, 255)
+            canvas.drawCircle(x, nodeY, 20f * density, nodeHaloPaint)
+            nodeFillPaint.alpha = (intensity * 0x50).toInt().coerceIn(0, 255)
             canvas.drawCircle(x, nodeY, 17f * density, nodeFillPaint)
-            // 外圈亮环
-            nodeRingPaint.alpha = (intensity * 0xB0).toInt().coerceIn(0, 255)
-            canvas.drawCircle(x, nodeY, (19f + 3f * intensity) * density, nodeRingPaint)
         }
     }
 }
