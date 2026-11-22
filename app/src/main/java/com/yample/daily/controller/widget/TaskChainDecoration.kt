@@ -5,6 +5,7 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.os.PowerManager
 import android.view.animation.LinearInterpolator
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.ColorUtils
@@ -19,10 +20,15 @@ import com.yample.daily.controller.R
  * - 驱动：ValueAnimator 每帧用 [RecyclerView.postInvalidateOnAnimation] 触发「仅重绘」。
  *   不能用 invalidateItemDecorations()——它在 RecyclerView 1.4.0 内部调 requestLayout()，
  *   在本列表位于 NestedScrollView + wrap_content 的场景下会每帧重测所有 item，造成布局风暴、动画卡死。
- * - 省电：依赖 Choreographer vsync 自然暂停（息屏/切后台时 vsync 停 → 回调停 → 动画自动停），无需显式轮询。
+ * - 省电：每帧只是重绘，不起新线程/不轮询；且息屏时显式 pause 动画，亮屏重绘时 resume。
  *   节点中心 x = 12dp(paddingStart) + 40dp/2 = 32dp；中心 y = 行垂直中心。
  * */
 class TaskChainDecoration(context: Context) : RecyclerView.ItemDecoration() {
+
+    private val appContext = context.applicationContext
+
+    /** 缓存 PowerManager，避免每帧 getSystemService */
+    private val powerManager = appContext.getSystemService(Context.POWER_SERVICE) as? PowerManager
 
     private val density = context.resources.displayMetrics.density
 
@@ -65,16 +71,17 @@ class TaskChainDecoration(context: Context) : RecyclerView.ItemDecoration() {
         color = pulseColor
     }
 
-    /** 节点点亮联动：画在 onDrawOver（item 之上），光点靠近节点时套一圈亮环 + 中心高光 */
+    /** 节点点亮联动：画在 onDrawOver（item 之上），光点靠近节点时整颗节点泛青光 + 外圈亮环 */
     private val nodeRingPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = 1.6f * density
         color = pulseColor
     }
 
-    private val nodeCorePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    /** DC 节点是 34dp 的时钟图标容器，用半透明填充盖在整颗节点上，图标本身也会一起被点亮 */
+    private val nodeFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
-        color = Color.WHITE
+        color = pulseColor
     }
 
     private var host: RecyclerView? = null
@@ -89,6 +96,11 @@ class TaskChainDecoration(context: Context) : RecyclerView.ItemDecoration() {
         repeatCount = ValueAnimator.INFINITE
         interpolator = LinearInterpolator()
         addUpdateListener { anim ->
+            // 息屏时直接暂停，避免部分机型 vsync 仍在走导致无意义重绘；亮屏由 onDraw resume
+            if (powerManager?.isInteractive == false) {
+                anim.pause()
+                return@addUpdateListener
+            }
             flowProgress = anim.animatedValue as Float
             host?.postInvalidateOnAnimation()
         }
@@ -96,6 +108,9 @@ class TaskChainDecoration(context: Context) : RecyclerView.ItemDecoration() {
 
     override fun onDraw(canvas: Canvas, parent: RecyclerView, state: RecyclerView.State) {
         if (host !== parent) host = parent
+        if (powerManager?.isInteractive != false && flowAnimator.isPaused) {
+            flowAnimator.resume()
+        }
         if (!flowAnimator.isStarted) {
             flowAnimator.start()
         }
@@ -180,7 +195,7 @@ class TaskChainDecoration(context: Context) : RecyclerView.ItemDecoration() {
     }
 
     /**
-     * 节点点亮画在 item 之上（onDraw 在子 view 之前绘制，光环会被 34dp 的节点圆底盖住）。
+     * 节点点亮画在 item 之上（onDraw 在子 view 之前绘制，光环会被 34dp 的时钟节点圆底盖住）。
      * */
     override fun onDrawOver(canvas: Canvas, parent: RecyclerView, state: RecyclerView.State) {
         if (pulseY == Float.MIN_VALUE || parent.childCount == 0) return
@@ -194,11 +209,12 @@ class TaskChainDecoration(context: Context) : RecyclerView.ItemDecoration() {
             if (dist >= glowRange) continue
 
             val intensity = 1f - dist / glowRange
-            // 亮环套在 34dp 节点（半径 17dp）外侧，中心补一点白高光
+            // 整颗 34dp 节点泛青光（时钟图标也跟着亮），低透明度不遮挡图标
+            nodeFillPaint.alpha = (intensity * 0x48).toInt().coerceIn(0, 255)
+            canvas.drawCircle(x, nodeY, 17f * density, nodeFillPaint)
+            // 外圈亮环
             nodeRingPaint.alpha = (intensity * 0xB0).toInt().coerceIn(0, 255)
             canvas.drawCircle(x, nodeY, (19f + 3f * intensity) * density, nodeRingPaint)
-            nodeCorePaint.alpha = (intensity * 0xD0).toInt().coerceIn(0, 255)
-            canvas.drawCircle(x, nodeY, (2f + 1.4f * intensity) * density, nodeCorePaint)
         }
     }
 }
