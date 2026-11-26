@@ -10,6 +10,7 @@ import android.widget.TextView
 import androidx.fragment.app.Fragment
 import com.yample.mqttprotocol.MqttPacket
 import com.yample.mqttprotocol.Protocol
+import com.yample.mqttprotocol.dialog.UnifiedDialogKit
 import androidx.core.content.ContextCompat
 import com.yample.daily.controller.databinding.FragmentOverviewBinding
 import com.yample.daily.controller.databinding.RowInfoBinding
@@ -115,6 +116,54 @@ class OverviewFragment : Fragment(), SnapshotFragment {
         binding.btnActAttendance.setOnClickListener { onAction?.invoke(MqttPacket.ACTION_ATTENDANCE) }
         binding.btnActLoopOn.setOnClickListener { onLoopToggle?.invoke(true) }
         binding.btnActLoopOff.setOnClickListener { onLoopToggle?.invoke(false) }
+
+        // 概览页信息条：单行 ellipsize 会把文案截断（如「今日 1 次 · 最近 2026-…」），
+        // 含义不清的指标统一支持点击看说明；说明内容延迟到点击时取最新快照，避免注册时数据未到。
+        bindChipHelp(binding.chipDisconnect, "今日掉线次数") {
+            val s = snapshot
+            val count = s?.runtime?.get("mqttDisconnectCount")?.toIntOrNull() ?: 0
+            val rawAt = s?.runtime?.get("mqttLastDisconnectAt") ?: "—"
+            "今日掉线 $count 次。\n\n" +
+                "统计口径：被控端（DT）上报，按 DT 本地日期每天 0 点清零。\n" +
+                "最近断连：$rawAt（DT 设备时间）\n\n" +
+                "短暂断连会自动重连，不一定影响打卡。若集中在夜间/息屏出现，通常是深睡时 MQTT 心跳被系统推迟、精确闹钟权限被关闭或网络不稳；可检查 DT 的精确闹钟权限与诊断报告中的「离线持续」记录。"
+        }
+        bindChipHelp(binding.chipScheduleDesc, "任务调度描述") {
+            "被控端任务调度器当前状态的一句话说明，通常包含下一次任务的时间窗口、随机延迟或跳过原因。\n\n" +
+                "显示「暂无调度描述」多表示任务未启用、调度器未运行，或快照尚未刷新。"
+        }
+        bindChipHelp(binding.chipServiceRun, "服务运行时长") {
+            "被控端前台保活服务自本次启动以来的持续运行时间，按量级压缩显示（分 / 时分 / 天时）。\n\n" +
+                "数值突然归零，说明服务曾被系统回收或重启过。"
+        }
+        bindChipHelp(binding.chipDeviceTime, "设备时间") {
+            "被控端设备上的当前时间，已压缩显示为「月-日 时:分」（原始格式 yyyy-MM-dd HH:mm:ss）。\n\n" +
+                "用于和本机时间对照；两边相差过大可能导致任务窗口判断不准。"
+        }
+        bindChipHelp(binding.chipNextReset, "下次重置") {
+            "被控端每日重置任务状态与当日计数（含掉线次数）的时间点。\n\n" +
+                "重置后「今日」类统计会清零，不影响已保存的任务配置。"
+        }
+        bindChipHelp(binding.chipPseudo, "伪息屏") {
+            "被控端用黑色蒙层模拟息屏，屏幕与 CPU 仍保持活跃，用于避免真息屏后系统冻结打卡任务与 MQTT 心跳。\n\n" +
+                "开启期间会增加耗电；关闭后走真息屏，依赖保活策略维持心跳。"
+        }
+        bindChipHelp(binding.chipPowerSave, "节能模式") {
+            "被控端系统省电模式的当前状态（亮色=已开启）。\n\n" +
+                "开启后系统会限制后台活动，可能造成任务延迟或 MQTT 心跳被推迟。"
+        }
+        bindChipHelp(binding.tvBatteryTrend, "电池趋势") {
+            "基于被控端上报的近 12 小时电量采样绘制的曲线与摘要。\n\n" +
+                "「X% → Y%」是区间首尾电量，后面的变化量用于估算掉电快慢；采样点少于 2 个时显示「数据不足」，需要 DT 常驻运行一段时间才会累积。"
+        }
+        bindChipHelp(binding.tvBatteryPredict, "电量预测") {
+            "按最近一段时间的掉电速率，估算预计耗尽时间以及达到预警阈值的时间。\n\n" +
+                "充电中、采样不足或刚开机时不预测。预测仅供参考，实际耗电会随息屏策略、网络状况和任务执行波动。"
+        }
+        bindChipHelp(binding.tvStaleStrip, "数据可能不是最新") {
+            "当前显示的是本机缓存的上次快照，不是被控端实时数据。通常出现在 DT 离线、MQTT 未连接，或刚进入页面还没拉到快照时。\n\n" +
+                "连接恢复后会自动刷新，也可以下拉手动刷新。"
+        }
 
         snapshot?.let { render(it) }
         pendingConnStatus?.let { state ->
@@ -579,7 +628,10 @@ class OverviewFragment : Fragment(), SnapshotFragment {
         // 掉线统计（被控端 runtime 上报：所有保活模式统一计数，跨天重置）
         val discCount = s.runtime["mqttDisconnectCount"]?.toIntOrNull() ?: 0
         val discAt = s.runtime["mqttLastDisconnectAt"] ?: "—"
-        val discText = if (discCount <= 0) "今日 0 次掉线" else "今日 $discCount 次 · 最近 $discAt"
+        // 完整 yyyy-MM-dd HH:mm:ss 在单行 chip 里会被截断成「2026…」，压缩成 MM-dd HH:mm；
+        // 同时补回「掉线」二字，避免「今日 1 次」不知所指。完整时间在点击说明里展示。
+        val discAtShort = formatDeviceTime(discAt)
+        val discText = if (discCount <= 0) "今日 0 次掉线" else "今日掉线 $discCount 次 · 最近 $discAtShort"
         setChip(binding.chipDisconnect, discText, false)
 
         // 设备信息（已迁移至「设置」页）
@@ -624,6 +676,23 @@ class OverviewFragment : Fragment(), SnapshotFragment {
             java.time.format.DateTimeFormatter.ofPattern("MM-dd HH:mm")
                 .format(java.time.LocalDateTime.parse(v, java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
         }.getOrDefault(v)
+    }
+
+    /** 信息条点击说明：用统一信息弹窗解释指标口径。
+     * message 延迟到点击时求值，保证读到的是最新快照；isAdded 守卫防止页面已销毁后 requireActivity 抛异常。 */
+    private fun bindChipHelp(view: View, title: String, message: () -> String) {
+        view.isClickable = true
+        view.isFocusable = true
+        // InfoChip 样式本身没有按压效果，补一层透明 ripple，让「这一条可以点」在视觉上可感知
+        val rippleAttr = android.util.TypedValue()
+        requireContext().theme.resolveAttribute(android.R.attr.selectableItemBackground, rippleAttr, true)
+        if (rippleAttr.resourceId != 0) {
+            ContextCompat.getDrawable(requireContext(), rippleAttr.resourceId)?.let { view.foreground = it }
+        }
+        view.setOnClickListener {
+            if (!isAdded || _binding == null) return@setOnClickListener
+            UnifiedDialogKit.showInfo(requireActivity(), title, message())
+        }
     }
 
     private fun setChip(tv: android.widget.TextView, label: String, on: Boolean) {
