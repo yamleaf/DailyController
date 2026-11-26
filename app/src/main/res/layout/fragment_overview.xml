@@ -718,6 +718,16 @@
                     android:layout_marginTop="8dp"
                     android:ellipsize="end"
                     android:text="今日 0 次掉线" />
+
+                <!-- 最近一次已恢复的离线区间：由 DT 重连后随快照补报；旧版 DT 无该字段时代码隐藏 -->
+                <TextView
+                    android:id="@+id/chipLastOffline"
+                    style="@style/InfoChip"
+                    android:layout_width="match_parent"
+                    android:layout_marginTop="8dp"
+                    android:ellipsize="end"
+                    android:visibility="gone"
+                    android:text="最近离线 --" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
@@ -743,7 +753,7 @@
                     </LinearLayout>
                     <LinearLayout style="@style/StatBox">
                         <TextView android:id="@+id/tvPunchMissed" style="@style/StatNum" android:text="0" />
-                        <TextView style="@style/StatLabel" android:text="未计划" />
+                        <TextView style="@style/StatLabel" android:text="未打卡" />
                     </LinearLayout>
                 </LinearLayout>
 

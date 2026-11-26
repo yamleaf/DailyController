@@ -10,7 +10,6 @@ import android.widget.TextView
 import androidx.fragment.app.Fragment
 import com.yample.mqttprotocol.MqttPacket
 import com.yample.mqttprotocol.Protocol
-import com.yample.mqttprotocol.dialog.UnifiedDialogKit
 import androidx.core.content.ContextCompat
 import com.yample.daily.controller.databinding.FragmentOverviewBinding
 import com.yample.daily.controller.databinding.RowInfoBinding
@@ -126,7 +125,21 @@ class OverviewFragment : Fragment(), SnapshotFragment {
             "今日掉线 $count 次。\n\n" +
                 "统计口径：被控端（DT）上报，按 DT 本地日期每天 0 点清零。\n" +
                 "最近断连：$rawAt（DT 设备时间）\n\n" +
-                "短暂断连会自动重连，不一定影响打卡。若集中在夜间/息屏出现，通常是深睡时 MQTT 心跳被系统推迟、精确闹钟权限被关闭或网络不稳；可检查 DT 的精确闹钟权限与诊断报告中的「离线持续」记录。"
+                "短暂断连会自动重连，不一定影响打卡。若集中在夜间/息屏出现，通常是深睡时 MQTT 心跳被系统推迟、精确闹钟权限被关闭或网络不稳；可检查 DT 的精确闹钟权限。\n\n" +
+                "每次掉线的「断开 → 恢复」区间和持续时长，见下方「最近离线」信息条。"
+        }
+        bindChipHelp(binding.chipLastOffline, "最近一次离线") {
+            val s = snapshot
+            // 优先用与本次区间成对写入的起点；旧版 DT 只有 mqttLastDisconnectAt 时回退
+            val since = s?.runtime?.get("mqttLastOfflineSince")?.takeIf { it.isNotBlank() && it != "—" }
+                ?: s?.runtime?.get("mqttLastDisconnectAt") ?: "—"
+            val until = s?.runtime?.get("mqttLastReconnectAt") ?: "—"
+            val seconds = s?.runtime?.get("mqttLastOfflineSeconds")?.toLongOrNull() ?: -1L
+            val duration = if (seconds >= 0L) formatDurationShort(seconds) else "—"
+            "最近一次已经恢复的 MQTT 断连区间（DT 上报）：\n\n" +
+                "断开：$since\n恢复：$until\n持续：$duration\n\n" +
+                "以上均为 DT 设备时间。DT 离线期间 MQTT 本身断开、无法推送，所以这段信息是在重连成功后随快照补报的，描述的是「最近一次已结束的离线」，不包含当前正在进行的断连。\n\n" +
+                "持续几十秒多为网络抖动；持续数分钟以上且集中在夜间，通常是深睡时心跳被系统推迟。升级到支持该字段的 DT 版本后才会显示本条；旧版本 DT 会自动隐藏。"
         }
         bindChipHelp(binding.chipScheduleDesc, "任务调度描述") {
             "被控端任务调度器当前状态的一句话说明，通常包含下一次任务的时间窗口、随机延迟或跳过原因。\n\n" +
@@ -164,6 +177,36 @@ class OverviewFragment : Fragment(), SnapshotFragment {
             "当前显示的是本机缓存的上次快照，不是被控端实时数据。通常出现在 DT 离线、MQTT 未连接，或刚进入页面还没拉到快照时。\n\n" +
                 "连接恢复后会自动刷新，也可以下拉手动刷新。"
         }
+        bindChipHelp(binding.chipTemperature, "电池温度") {
+            "被控端系统上报的电池温度，单位 ℃。\n\n" +
+                "仅作参考，不同机型传感器精度差异较大；持续偏高多与充电或高负载有关。"
+        }
+        bindChipHelp(binding.tvBatteryCharging, "充电与温度") {
+            "左侧是 DT 当前是否在充电（true/false），右侧是电池温度（℃）。\n\n" +
+                "数据来自快照，离线时显示的是缓存值；下拉刷新可更新。"
+        }
+        // 状态条靠背景色表达开关，色弱/明暗主题下不易分辨，统一在点击说明里写明判读方式
+        val toggleHint = "亮色（高亮）= 已开启/已连接，灰底 = 已关闭/未连接。\n\n" +
+            "这是 DT 快照上报的状态，不是本机状态；离线时显示的是上次缓存值。"
+        bindChipHelp(binding.chipForeground, "前台服务") { "被控端常驻前台保活服务是否在运行。\n\n$toggleHint\n\n若长期为关闭，打卡任务与 MQTT 心跳可能被系统冻结。" }
+        bindChipHelp(binding.chipScheduler, "任务调度") { "被控端任务调度器是否在运行（负责按时间窗口触发打卡）。\n\n$toggleHint" }
+        bindChipHelp(binding.chipWifi, "WiFi 状态") { "被控端 WiFi 连接状态。\n\n$toggleHint" }
+        bindChipHelp(binding.chipBluetooth, "蓝牙状态") { "被控端蓝牙开关状态。\n\n$toggleHint" }
+        bindChipHelp(binding.chipLoop, "每日循环") {
+            "任务是否在每天完成后自动重置、次日继续执行。\n\n$toggleHint\n\n关闭后任务执行完即停止，不会在次日自动重排。"
+        }
+        bindChipHelp(binding.tvSnapshotHint, "快照等待提示") {
+            "进入页面时会向 DT 请求一份运行快照；这行文字表示请求仍在进行或准备重试。\n\n" +
+                "长时间不消失通常是 DT 离线、MQTT 未连接或未配对；可下拉刷新重试。"
+        }
+        bindChipHelp(binding.tvPunchPunched, "已打卡天数") {
+            "近两周日历中状态为「成功」或「超时」的天数合计（被控端按日期聚合）。\n\n超时也算已打卡：任务确实执行过，只是确认结果回来得晚。"
+        }
+        bindChipHelp(binding.tvPunchScheduled, "计划天数") { "被控端上报的区间内计划执行的打卡天数。\n\n休息日、跳过的任务不计入。" }
+        bindChipHelp(binding.tvPunchMissed, "未打卡天数") { "被控端上报的、计划内但最终没有打卡记录的天数。\n\n与日历页「● 未打卡」同一口径。" }
+        bindChipHelp(binding.rowNext.root, "下次打卡") { "被控端调度器计算出的下一次任务触发时间；「--」表示当前没有待执行任务。" }
+        bindChipHelp(binding.rowRecent.root, "最近打卡") { "被控端上报的最近一次打卡结果（时间 + 结果文案），用于快速确认上一次是否成功。" }
+        bindChipHelp(binding.rowToday.root, "今日状态") { "被控端上报的今日打卡状态原文，例如已打卡 / 待执行 / 休息 / 跳过。\n\n口径由 DT 决定，DC 不做转换。" }
 
         snapshot?.let { render(it) }
         pendingConnStatus?.let { state ->
@@ -530,6 +573,14 @@ class OverviewFragment : Fragment(), SnapshotFragment {
                     else -> R.color.md_onSurface
                 }
             ))
+            row.root.bindHelp(
+                title = "指令回执",
+                message = {
+                    "指令：${cmd.label ?: "未知指令"}\n回执：$result\n时间：$timeStr（本机时间）\n\n" +
+                        "这里只记录本机下发过的指令及其回执，不代表 DT 当前状态；指令是否真正执行完成，以打卡记录与 DT 快照为准。"
+                },
+                alive = { isAdded && _binding != null }
+            )
             binding.layoutRecentCmds.addView(row.root)
         }
     }
@@ -633,6 +684,23 @@ class OverviewFragment : Fragment(), SnapshotFragment {
         val discAtShort = formatDeviceTime(discAt)
         val discText = if (discCount <= 0) "今日 0 次掉线" else "今日掉线 $discCount 次 · 最近 $discAtShort"
         setChip(binding.chipDisconnect, discText, false)
+        // 最近一次「已恢复」的离线区间：新字段由 DT 重连后随快照补报；旧版 DT / 从未掉线时隐藏该行
+        val offlineSeconds = s.runtime["mqttLastOfflineSeconds"]?.toLongOrNull() ?: -1L
+        val recAt = s.runtime["mqttLastReconnectAt"] ?: "—"
+        if (offlineSeconds >= 0L && recAt != "—") {
+            val sinceRaw = s.runtime["mqttLastOfflineSince"]?.takeIf { it.isNotBlank() && it != "—" }
+                ?: s.runtime["mqttLastDisconnectAt"]
+            val sinceShort = formatDeviceTime(sinceRaw)
+            val untilShort = formatDeviceTime(recAt)
+            binding.chipLastOffline.visibility = View.VISIBLE
+            setChip(
+                binding.chipLastOffline,
+                "最近离线 $sinceShort → $untilShort · ${formatDurationShort(offlineSeconds)}",
+                false
+            )
+        } else {
+            binding.chipLastOffline.visibility = View.GONE
+        }
 
         // 设备信息（已迁移至「设置」页）
 
@@ -669,30 +737,12 @@ class OverviewFragment : Fragment(), SnapshotFragment {
         else -> "${minutes}分"
     }
 
-    /** 设备时间压缩显示：yyyy-MM-dd HH:mm:ss → MM-dd HH:mm（chip 宽度有限，秒级对概览无意义） */
-    private fun formatDeviceTime(raw: String?): String {
-        val v = raw?.takeIf { it.isNotBlank() } ?: return "--"
-        return runCatching {
-            java.time.format.DateTimeFormatter.ofPattern("MM-dd HH:mm")
-                .format(java.time.LocalDateTime.parse(v, java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
-        }.getOrDefault(v)
-    }
+    /** 设备时间压缩：委托同包公共实现，供设备页复用同一口径 */
+    private fun formatDeviceTime(raw: String?): String = formatDeviceTimeShort(raw)
 
-    /** 信息条点击说明：用统一信息弹窗解释指标口径。
-     * message 延迟到点击时求值，保证读到的是最新快照；isAdded 守卫防止页面已销毁后 requireActivity 抛异常。 */
+    /** 信息条点击说明：委托 [bindHelp] 公共实现；isAdded 守卫防止页面已销毁后弹窗抛异常。 */
     private fun bindChipHelp(view: View, title: String, message: () -> String) {
-        view.isClickable = true
-        view.isFocusable = true
-        // InfoChip 样式本身没有按压效果，补一层透明 ripple，让「这一条可以点」在视觉上可感知
-        val rippleAttr = android.util.TypedValue()
-        requireContext().theme.resolveAttribute(android.R.attr.selectableItemBackground, rippleAttr, true)
-        if (rippleAttr.resourceId != 0) {
-            ContextCompat.getDrawable(requireContext(), rippleAttr.resourceId)?.let { view.foreground = it }
-        }
-        view.setOnClickListener {
-            if (!isAdded || _binding == null) return@setOnClickListener
-            UnifiedDialogKit.showInfo(requireActivity(), title, message())
-        }
+        view.bindHelp(title, message) { isAdded && _binding != null }
     }
 
     private fun setChip(tv: android.widget.TextView, label: String, on: Boolean) {
