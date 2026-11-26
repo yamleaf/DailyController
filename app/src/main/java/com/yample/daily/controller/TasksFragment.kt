@@ -72,6 +72,19 @@ class TasksFragment : Fragment(), SnapshotFragment {
         // 链式时间轴：卡片间灰线 + 卡片左内侧流动彗星光点（已适配卡片化布局）
         chainDecoration = TaskChainDecoration(ctx).also { binding.rvTasks.addItemDecoration(it) }
         binding.btnAddTask.setOnClickListener { showAddTaskPicker() }
+        // 卡片上大量缩写/时间窗口含义不清，且短按无反馈；在标题处集中说明，
+        // 不改卡片自身的点击/长按逻辑（避免破坏长按编辑菜单与左滑收起）
+        binding.tvTaskCount.bindHelp(
+            title = "任务卡片说明",
+            message = {
+                "这里列出被控端配置的打卡时间点，按时间先后执行。\n\n" +
+                    "状态胶囊：待执行 / 成功 / 超时 / 跳过 / 已过期，仅用颜色区分。\n" +
+                    "随机窗口（如 08:23 - 08:28）：任务会在该区间内随机选一个时刻触发，避免每天固定秒级时间；显示「未启用」表示随机时间已关闭。\n" +
+                    "实际时间：DT 真正执行打卡的时刻，「--:--:--」表示尚未执行。\n\n" +
+                    "长按卡片可编辑/删除，左滑也能展开操作按钮；未展开时短按卡片不会误触编辑。"
+            },
+            alive = { isAdded && _binding != null }
+        )
         // 视图可能晚于禁用指令创建（懒加载 tab），创建后立即应用置灰态
         binding.btnAddTask.isEnabled = commandsEnabled
         binding.btnAddTask.alpha = if (commandsEnabled) 1f else 0.45f

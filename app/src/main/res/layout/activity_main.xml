@@ -107,6 +107,7 @@
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
                         android:background="@drawable/bg_action_tile"
+                        android:id="@+id/tileStatTotal"
                         android:backgroundTint="@color/brand_purple_container"
                         android:gravity="center"
                         android:orientation="vertical"
@@ -133,6 +134,7 @@
 
                     <!-- 在线：淡绿底 -->
                     <LinearLayout
+                        android:id="@+id/tileStatOnline"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_marginStart="8dp"
@@ -166,6 +168,7 @@
 
                     <!-- 离线：淡红底 -->
                     <LinearLayout
+                        android:id="@+id/tileStatOffline"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_marginStart="8dp"
@@ -192,7 +195,7 @@
                             android:layout_marginTop="2dp"
                             android:drawableStart="@drawable/dot_offline"
                             android:drawablePadding="4dp"
-                            android:text="异常"
+                            android:text="非在线"
                             android:textColor="@color/md_onSurfaceVariant"
                             android:textSize="11sp" />
                     </LinearLayout>

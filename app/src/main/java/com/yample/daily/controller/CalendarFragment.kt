@@ -33,9 +33,19 @@ class CalendarFragment : Fragment(), SnapshotFragment {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        calendarAdapter = CalendarAdapter(days, todayStr)
+        calendarAdapter = CalendarAdapter(days, todayStr) { isAdded && _binding != null }
         binding.rvCalendar.layoutManager = GridLayoutManager(requireContext(), 7)
         binding.rvCalendar.adapter = calendarAdapter
+        bindChipHelp(binding.tvCalendarSummary, "打卡统计口径") {
+            "「已打卡」＝日历中状态为成功或超时的天数合计（超时也算执行过，只是确认结果回来得晚）。\n" +
+                "「计划」＝被控端上报的计划执行天数，休息/跳过不计入。\n" +
+                "「今日」＝被控端上报的今日状态原文。\n\n" +
+                "统计范围为本页日历（近两周 + 未来两周），数据来自 DT 快照，离线时显示缓存值。"
+        }
+        bindChipHelp(binding.layoutCalendarLegend, "日历图例") {
+            "格子里的符号：✓ 成功打卡、⚠ 超时（已执行但确认偏晚）、❖ 待执行/已计划、× 未打卡、休 休息日、跳 主动跳过。\n\n" +
+                "今天带描边；颜色与下方图例的圆点一一对应。轻点任意日期格子可查看该天的具体状态。"
+        }
         snapshot?.let { render(it) }
     }
 
@@ -82,8 +92,21 @@ class CalendarFragment : Fragment(), SnapshotFragment {
             row.tvRowLabel.text = h.time
             row.tvRowValue.text = h.result
             row.tvRowValue.setTextColor(historyColor(h.result))
+            row.root.bindHelp(
+                title = "打卡记录",
+                message = {
+                    "时间：${h.time}\n结果：${h.result}\n\n" +
+                        "这里是被控端上报的近 14 天打卡流水。「超时」表示任务执行过但结果确认偏晚，仍计入已打卡天数。"
+                },
+                alive = { isAdded && _binding != null }
+            )
             binding.layoutHistory.addView(row.root)
         }
+    }
+
+    /** 信息条点击说明：委托 [bindHelp] 公共实现；isAdded 守卫防止页面已销毁后弹窗抛异常。 */
+    private fun bindChipHelp(view: View, title: String, message: () -> String) {
+        view.bindHelp(title, message) { isAdded && _binding != null }
     }
 
     private fun historyColor(result: String): Int {
@@ -99,8 +122,11 @@ class CalendarFragment : Fragment(), SnapshotFragment {
         _binding = null
     }
 
-    private class CalendarAdapter(private val items: List<CalendarDay>, private val todayStr: String) :
-        RecyclerView.Adapter<CalendarAdapter.VH>() {
+    private class CalendarAdapter(
+        private val items: List<CalendarDay>,
+        private val todayStr: String,
+        private val alive: () -> Boolean
+    ) : RecyclerView.Adapter<CalendarAdapter.VH>() {
         class VH(val binding: ItemCalendarDayBinding) : RecyclerView.ViewHolder(binding.root)
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
@@ -115,11 +141,25 @@ class CalendarFragment : Fragment(), SnapshotFragment {
                 holder.binding.tvDay.text = ""
                 holder.binding.tvDay.background.setTint(ctx.getColor(android.R.color.transparent))
                 holder.binding.tvDay.setTextColor(ctx.getColor(R.color.md_onSurfaceVariant))
+                // ViewHolder 复用：占位格必须清掉上一次绑定的点击态与 ripple，否则空白格也能弹说明
+                holder.binding.tvDay.setOnClickListener(null)
+                holder.binding.tvDay.isClickable = false
+                holder.binding.tvDay.foreground = null
                 return
             }
             val isToday = item.date == todayStr
             val (bg, fg) = dayStyle(item.status)
             val glyph = dayGlyph(item.status)
+            holder.binding.tvDay.bindHelp(
+                title = "日历：${item.date}",
+                message = {
+                    "日期：${item.date}${if (isToday) "（今天）" else ""}\n" +
+                        "状态：${dayDesc(item.status)}\n符号：$glyph\n\n" +
+                        "日历口径：✓ 成功、⚠ 超时、❖ 待执行/已计划、× 未打卡、休 休息日、跳 主动跳过。\n" +
+                        "数据来自 DT 快照，离线时显示的是缓存值。"
+                },
+                alive = alive
+            )
             holder.binding.tvDay.text = "${item.label}\n$glyph"
             // 始终使用状态对应的前景色
             holder.binding.tvDay.setTextColor(ctx.getColor(fg))
@@ -155,6 +195,18 @@ class CalendarFragment : Fragment(), SnapshotFragment {
             "rest" -> "休"
             "skip" -> "跳"
             else -> "—"
+        }
+
+        /** 格子点击说明用的状态中文，与 [dayGlyph] 一一对应（口径同 DeviceControlActivity 的日历统计） */
+        private fun dayDesc(status: String): String = when (status) {
+            "success" -> "成功打卡"
+            "timeout" -> "超时（任务已执行，结果确认偏晚，仍计入已打卡）"
+            "pending" -> "待执行"
+            "scheduled" -> "已计划"
+            "missed" -> "未打卡"
+            "rest" -> "休息日"
+            "skip" -> "主动跳过"
+            else -> "无数据"
         }
 
         override fun getItemCount() = items.size

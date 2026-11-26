@@ -59,7 +59,49 @@ class DeviceFragment : Fragment(), SnapshotFragment {
         binding.btnUnbindDevice.setOnClickListener {
             if (unboundMode) onDelete?.invoke() else onUnbind?.invoke()
         }
+        // 设备页信息行多为缩写/术语，统一支持点击看说明（不改任何既有按钮与折叠交互）
+        bindChipHelp(binding.tvQuotaText, "消息配额") {
+            "「已用」是本次统计周期内 DT 与 Broker 之间收发的消息总数。\n\n" +
+                "该数值由控制端本地的 MqttQuota 统计（非 DT 上报），用于观察流量消耗；下方明细里的「本次连接」指本端与 Broker 建立当前连接后的时长。"
+        }
+        bindChipHelp(binding.tvQuotaHint, "收发消息数") {
+            "已发送 = 控制端下发的指令/探活等消息条数；已接收 = 控制端收到的快照、回执、告警等条数。\n\n" +
+                "两边差距过大通常表示 DT 离线或回执丢失。"
+        }
+        bindChipHelp(binding.layoutQuotaDetails, "连接与消息明细") {
+            "已累计连接：本端历史上与 Broker 建立连接的总时长；本次连接：当前这次连接的持续时长。\n\n" +
+                "消息类计数从本端统计，重启 App 后重新累计；它只反映控制端这一侧，不等于 DT 收发的全部消息。"
+        }
+        bindChipHelp(binding.rowSynced.root, "最近同步") {
+            "当前这份快照的获取时间，显示为相对时间（刚刚 / x分钟前 / x小时前）。\n\n" +
+                "时间偏大说明 DT 离线或快照长时间未刷新，可下拉手动刷新。"
+        }
+        bindChipHelp(binding.rowPaired.root, "配对状态") {
+            "已配对 = 本端与 DT 已完成扫码绑定并持有会话密钥，才能下发指令；未配对只能查看基础状态。\n\n" +
+                "与「在线」是两件事：可达但未配对时，设备列表会显示「在线·解绑」。"
+        }
+        bindChipHelp(binding.rowConnQuality.root, "连接质量") {
+            "按一次 MQTT 探活的往返时延（RTT）分级：<300ms 优、<800ms 良、<2000ms 一般、其余弱。\n\n" +
+                "只反映当前这一刻的网络往返，不代表 DT 是否在线；「—」表示尚未测到。"
+        }
+        bindChipHelp(binding.rowKeepaliveLevel.root, "保活级别") {
+            "DT 在真息屏下维持 MQTT 心跳的方式：ALARM（系统闹钟驱动心跳，较省电）/ CPU（持锁保持 CPU 调度，最稳但耗电）。\n\n" +
+                "AUTO 模式下若 30 分钟内掉线 ≥2 次会自动由 ALARM 升到 CPU，且不自动降级；每次 MQTT 服务启动会重置回 ALARM。"
+        }
+        bindChipHelp(binding.rowKeepaliveChanged.root, "最近切换") {
+            "保活级别最近一次发生变化的方向与时间（DT 设备时间，已压缩为 月-日 时:分）。\n\n" +
+                "「固定 ALARM / 固定 CPU」表示你指定了保活模式，不会发生自动切换；「启动重置 ALARM」表示服务重启后回到起步级别。"
+        }
+        bindChipHelp(binding.rowInstall.root, "安装ID") {
+            "DT 每次安装生成的本地标识，用于区分同一设备的不同安装实例。\n\n" +
+                "卸载重装后会变化；与设备ID（用于 MQTT 主题）不是同一个值。"
+        }
         snapshot?.let { render(it) }
+    }
+
+    /** 信息条点击说明：委托 [bindHelp] 公共实现；isAdded 守卫防止页面已销毁后弹窗抛异常。 */
+    private fun bindChipHelp(view: View, title: String, message: () -> String) {
+        view.bindHelp(title, message) { isAdded && _binding != null }
     }
 
     override fun refresh(snapshot: DeviceSnapshot) {
@@ -126,7 +168,8 @@ class DeviceFragment : Fragment(), SnapshotFragment {
         if (showKeepalive) {
             setRow(binding.rowKeepaliveLevel, "保活级别", s.runtime["keepaliveLevel"] ?: "--")
             val desc = s.runtime["keepaliveLevelChangedDesc"] ?: "--"
-            val at = s.runtime["keepaliveLevelChangedAt"] ?: "--"
+            // 与概览页统一口径：DT 上报的完整 yyyy-MM-dd HH:mm:ss 压缩为 MM-dd HH:mm，避免长串撑破行宽
+            val at = formatDeviceTimeShort(s.runtime["keepaliveLevelChangedAt"])
             setRow(binding.rowKeepaliveChanged, "最近切换", if (desc != "—") "$desc · $at" else at)
         }
         setRow(binding.rowProtoVer, "协议版本", s.device["protoVer"] ?: "—")
