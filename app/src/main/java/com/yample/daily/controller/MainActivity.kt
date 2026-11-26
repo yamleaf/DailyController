@@ -134,18 +134,27 @@ class MainActivity : AppCompatActivity() {
         binding.tvStatTotal.text = "0"
         binding.tvStatOffline.text = "0"
         // Hero 三张统计卡原先点击无反应、且「异常」口径容易被误读为故障，统一加点击说明
-        binding.tileStatTotal.bindHelp("总设备") {
-            "本机设备列表里已添加的设备数量，包含已绑定、待配对和已解绑的设备。\n\n" +
-                "这个数字只反映本端保存的列表，不代表 DT 当前是否在线。"
-        }
-        binding.tileStatOnline.bindHelp("在线设备") {
-            "进入列表时，控制端会临时连一次 MQTT 读取各设备上报的在线状态（retained 消息）来判定。\n\n" +
-                "控制端不是常驻 App、不会持续订阅，所以这个数字是「本次打开时的探活结果」；下拉刷新可重新探活。"
-        }
-        binding.tileStatOffline.bindHelp("非在线设备") {
-            "口径 = 总设备 − 在线，包含：明确离线、未配对/已解绑、以及状态未知（探活中或没拿到 retained 状态）。\n\n" +
-                "因此它不等于「故障设备数」。离线期间控制端显示的仍是上次缓存的快照，连接恢复后会自动更新。"
-        }
+        binding.tileStatTotal.bindHelp(
+            title = "总设备",
+            message = {
+                "本机设备列表里已添加的设备数量，包含已绑定、待配对和已解绑的设备。\n\n" +
+                    "这个数字只反映本端保存的列表，不代表 DT 当前是否在线。"
+            }
+        )
+        binding.tileStatOnline.bindHelp(
+            title = "在线设备",
+            message = {
+                "进入列表时，控制端会临时连一次 MQTT 读取各设备上报的在线状态（retained 消息）来判定。\n\n" +
+                    "控制端不是常驻 App、不会持续订阅，所以这个数字是「本次打开时的探活结果」；下拉刷新可重新探活。"
+            }
+        )
+        binding.tileStatOffline.bindHelp(
+            title = "非在线设备",
+            message = {
+                "口径 = 总设备 − 在线，包含：明确离线、未配对/已解绑、以及状态未知（探活中或没拿到 retained 状态）。\n\n" +
+                    "因此它不等于「故障设备数」。离线期间控制端显示的仍是上次缓存的快照，连接恢复后会自动更新。"
+            }
+        )
 
         // 搜索：输入即按名称 / ID 过滤设备列表，并实时切换清空按钮与空状态
         binding.etSearch.addTextChangedListener(object : android.text.TextWatcher {
