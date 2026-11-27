@@ -200,7 +200,7 @@ class OverviewFragment : Fragment(), SnapshotFragment {
                 "长时间不消失通常是 DT 离线、MQTT 未连接或未配对；可下拉刷新重试。"
         }
         bindChipHelp(binding.tvPunchPunched, "已打卡天数") {
-            "近两周日历中状态为「成功」或「超时」的天数合计（被控端按日期聚合）。\n\n超时也算已打卡：任务确实执行过，只是确认结果回来得晚。"
+            "近两周日历中状态为「打卡·成功」或「打卡·超时」的天数合计（被控端按日期聚合）。\n\n打卡·超时也计入已打卡：任务确实执行过，只是确认结果回来得晚。"
         }
         bindChipHelp(binding.tvPunchScheduled, "计划天数") { "被控端上报的区间内计划执行的打卡天数。\n\n休息日、跳过的任务不计入。" }
         bindChipHelp(binding.tvPunchMissed, "未打卡天数") { "被控端上报的、计划内但最终没有打卡记录的天数。\n\n与日历页「● 未打卡」同一口径。" }

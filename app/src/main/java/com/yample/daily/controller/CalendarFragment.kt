@@ -43,7 +43,7 @@ class CalendarFragment : Fragment(), SnapshotFragment {
                 "统计范围为本页日历（近两周 + 未来两周），数据来自 DT 快照，离线时显示缓存值。"
         }
         bindChipHelp(binding.layoutCalendarLegend, "日历图例") {
-            "格子里的符号：✓ 成功打卡、⚠ 超时（已执行但确认偏晚）、❖ 待执行/已计划、× 未打卡、休 休息日、跳 主动跳过。\n\n" +
+            "格子里的符号：✓ 打卡·成功、⚠ 打卡·超时（已执行但确认偏晚）、❖ 待执行/已计划、× 未打卡、休 休息日、跳 主动跳过。\n\n" +
                 "今天带描边；颜色与下方图例的圆点一一对应。轻点任意日期格子可查看该天的具体状态。"
         }
         snapshot?.let { render(it) }
@@ -96,7 +96,7 @@ class CalendarFragment : Fragment(), SnapshotFragment {
                 title = "打卡记录",
                 message = {
                     "时间：${h.time}\n结果：${h.result}\n\n" +
-                        "这里是被控端上报的近 14 天打卡流水。「超时」表示任务执行过但结果确认偏晚，仍计入已打卡天数。"
+                        "这里是被控端上报的近 14 天打卡流水。「打卡·超时」表示任务执行过但结果确认偏晚，仍计入已打卡天数。"
                 },
                 alive = { isAdded && _binding != null }
             )
@@ -199,8 +199,8 @@ class CalendarFragment : Fragment(), SnapshotFragment {
 
         /** 格子点击说明用的状态中文，与 [dayGlyph] 一一对应（口径同 DeviceControlActivity 的日历统计） */
         private fun dayDesc(status: String): String = when (status) {
-            "success" -> "成功打卡"
-            "timeout" -> "超时（任务已执行，结果确认偏晚，仍计入已打卡）"
+            "success" -> "打卡·成功"
+            "timeout" -> "打卡·超时（任务已执行，打卡等待超时且未获取到打卡结果，仍计入已打卡日历）"
             "pending" -> "待执行"
             "scheduled" -> "已计划"
             "missed" -> "未打卡"
